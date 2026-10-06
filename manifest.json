@@ -1,0 +1,20 @@
+{
+  "name": "Marine Comeback Companion",
+  "short_name": "MarineFit",
+  "start_url": "./index.html?v=7goblins",
+  "display": "standalone",
+  "background_color": "#07100b",
+  "theme_color": "#101820",
+  "icons": [
+    {
+      "src": "icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
