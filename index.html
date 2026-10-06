@@ -1860,6 +1860,11 @@ section:has(button[onclick*="saveDailyWithFeedback"]){
 
 
 
+<section class="card" id="fitnessPhase2">
+<h2>Fitness</h2><div class="small">APP REMEMBERS. COACH DECIDES.</div>
+<div class="row"><button class="yellow" type="button" onclick="MC2.run()">RUN</button><button type="button" onclick="MC2.gym()">GYM DAY</button></div>
+<div class="small" style="margin-top:10px">Weekly running: <strong id="mc2Miles">0.00 mi</strong></div>
+</section>
 <section class="card" id="lifeBalance">
   <h2>Recovery / Life Balance</h2>
   <div class="small">Smart rest is not quitting. It is staying in the fight long-term.</div>
@@ -2111,7 +2116,7 @@ function checkWorkoutMilestoneGoblin(){
 
 
       <div class="missionModeButtons">
-        <button class="yellow" onclick="startPlanetFitnessMission()">Start PF Circuit Mission</button>
+        <button class="yellow" type="button" onclick="MC2.home()">Fitness — Run / Gym Day</button>
         <button class="secondary" onclick="showRandomMoraleGoblin()" type="button" onclick="showRandomMoraleGoblin()">Random Morale Goblin</button>
       </div>
     </div>
@@ -2174,7 +2179,7 @@ function buildMissionObjectives(){
  const left=Math.max(0,3-bottles);
  const objectives=[
   {done:bottles>=3,text:bottles>=3?"Hydration complete. Warfighter fluids acceptable.":`Drink ${left} more bottle${left===1?"":"s"} of water.`},
-  {done:!!e.workout,text:e.workout?"Workout already logged. Proof exists.":"Complete Planet Fitness circuit mission."},
+  {done:!!e.workout,text:e.workout?"Workout already logged. Proof exists.":"Complete today's fitness mission."},
   {done:!!e.protein,text:e.protein?"Fueled the Machine.":"Fueled the Machine."},
   {done:!!e.redLight,text:e.redLight?"Red light therapy logged.":"Hit red light therapy after workout."},
   {done:!!e.sleep,text:e.sleep?"Sleep protected.":"Connect with God."}
@@ -7437,6 +7442,46 @@ setTimeout(wireButtons, 1500);
 })();
 </script>
 
+<style id="mc2css">
+#mc2O{position:fixed;inset:0;background:#000e;display:none;align-items:center;justify-content:center;z-index:20000;padding:12px}#mc2O.on{display:flex}
+#mc2P{width:min(96vw,760px);max-height:94vh;overflow:auto;background:#0b1009;border:1px solid #d8bd6448;border-radius:20px;padding:15px}
+.mc2h{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid #ffffff18;padding-bottom:9px}.mc2h h2{color:#facc15;margin:0}.mc2x{width:auto!important;margin:0!important;padding:7px 12px!important}
+.mc2ex{border:1px solid #ffffff18;border-radius:14px;padding:11px;margin:9px 0}.mc2ex h3{color:#facc15;margin:0}.mc2prev{font-size:.8rem;color:#b8ad92;margin:5px 0}
+.mc2set{display:grid;grid-template-columns:55px 1fr 1fr;gap:7px;align-items:center}.mc2set input{margin:4px 0}.mc2grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mc2opt{border:1px solid #ffffff18;border-radius:12px;padding:9px}.mc2opt label{display:flex;justify-content:space-between;align-items:center;gap:8px}.mc2opt input{width:28px;height:28px;margin:0}
+@media(max-width:520px){.mc2grid{grid-template-columns:1fr}}
+</style>
+<div id="mc2O"><div id="mc2P"><div class="mc2h"><div><h2 id="mc2T">FITNESS</h2><div class="small" id="mc2S">App remembers. Coach decides.</div></div><button class="mc2x secondary" type="button" onclick="MC2.close()">×</button></div><div id="mc2C"></div></div></div>
+<script id="mc2js">
+window.MC2=(function(){
+const K="marine_data_v5",P={
+A:{n:"WORKOUT A — PUSH",e:[["Chest Press",3,"8–12"],["Incline Chest Press",3,"8–12"],["Shoulder Press",3,"8–12"],["Lateral Raise",3,"12–15"],["Triceps Pressdown",3,"10–15"],["Overhead Triceps Extension",3,"10–15"]]},
+B:{n:"WORKOUT B — PULL",e:[["Lat Pulldown",3,"8–12"],["Seated Cable Row",3,"8–12"],["Rear-Delt Fly / Reverse Pec Deck",3,"12–15"],["Cable or Machine Curl",3,"10–15"],["Hammer Curl",3,"10–15"],["Preacher Curl",2,"10–15"]]}};let W=null;
+const D=()=>{try{return JSON.parse(localStorage.getItem(K)||"{}")}catch(e){return{}}},S=d=>localStorage.setItem(K,JSON.stringify(d));
+const dk=(d=new Date())=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+const c=()=>document.getElementById("mc2C"),o=()=>document.getElementById("mc2O");
+function head(t,s){document.getElementById("mc2T").textContent=t;document.getElementById("mc2S").textContent=s||"App remembers. Coach decides."}
+function show(){o().classList.add("on")} function close(){o().classList.remove("on");W=null}
+function note(a,b){try{if(typeof mcToast==="function")mcToast(a,b);else alert(a+": "+b)}catch(e){}}
+function sec(v){let a=String(v||"").trim().split(":").map(Number);if(![2,3].includes(a.length)||a.some(x=>!Number.isFinite(x)||x<0))return 0;if(a.length===2&&a[1]>=60||a.length===3&&(a[1]>=60||a[2]>=60))return 0;return a.length===2?a[0]*60+a[1]:a[0]*3600+a[1]*60+a[2]}
+function ft(x){x=Math.round(x);let h=Math.floor(x/3600),m=Math.floor(x%3600/60),s=x%60;return(h?String(h).padStart(2,"0")+":":"")+String(m).padStart(h?2:1,"0")+":"+String(s).padStart(2,"0")}
+function miles(){let d=D(),n=new Date(),q=n.getDay(),m=new Date(n);m.setDate(n.getDate()+(q===0?-6:1-q));m.setHours(0,0,0,0);return Object.keys(d).reduce((z,k)=>new Date(k+"T12:00:00")>=m&&d[k].runSession?z+(+d[k].runSession.distance||0):z,0)}
+function wm(){let e=document.getElementById("mc2Miles");if(e)e.textContent=miles().toFixed(2)+" mi"}
+function home(){head("FITNESS","Choose today's mission.");c().innerHTML='<div class="mc2grid"><button class="yellow" onclick="MC2.run()">RUN</button><button onclick="MC2.gym()">GYM DAY</button></div>';show()}
+function run(){head("RUN","Distance + time + optional notes.");c().innerHTML='<label>Distance (miles)</label><input id="rD" type="number" min=".01" step=".01" inputmode="decimal"><label>Total time (MM:SS or HH:MM:SS)</label><input id="rT" placeholder="23:42"><div class="small">Average pace: <strong id="rP">—</strong></div><label>Optional notes</label><textarea id="rN"></textarea><button class="yellow" onclick="MC2.saveRun()">COMPLETE RUN</button>';show();rD.oninput=rT.oninput=pace}
+function pace(){let d=+rD.value,s=sec(rT.value);rP.textContent=d>0&&s?ft(s/d)+"/mi":"—"}
+function saveRun(){let di=+rD.value,se=sec(rT.value);if(!(di>0)||!se){note("Run","Enter valid distance and time.");return}let d=D(),k=dk(),e=d[k]||{};e.runSession={distance:+di.toFixed(2),time:ft(se),timeSeconds:se,pace:ft(se/di)+"/mi",notes:rN.value.trim(),completedAt:new Date().toISOString()};e.workout=true;e.workoutType="RUN";e.cardio=true;e.notes=e.runSession.notes||"Run completed.";d[k]=e;S(d);wm();close();note("Run Logged",di.toFixed(2)+" mi • "+e.runSession.pace)}
+function last(n){let d=D(),ks=Object.keys(d).sort().reverse();for(let k of ks){let g=d[k]&&d[k].gymSession,x=g&&g.exercises&&g.exercises.find(v=>v.name===n);if(x)return x}return null}
+function gym(){head("GYM DAY","Choose Push or Pull.");c().innerHTML='<div class="mc2grid"><button class="yellow" onclick="MC2.work(\'A\')">WORKOUT A — PUSH</button><button onclick="MC2.work(\'B\')">WORKOUT B — PULL</button></div>';show()}
+function work(k){W=k;let p=P[k];head(p.n,"Enter actual weight and reps for every working set.");let x='<div class="mc2grid"><div class="mc2opt"><label>Warm-up <span class="small">5 min • 2.5 • incline 15</span><input id="wU" type="checkbox" checked></label></div><div class="mc2opt"><label>Cooldown / Stretch<input id="cD" type="checkbox"></label></div><div class="mc2opt"><label>Red-light therapy<input id="rL" type="checkbox"></label></div><div class="mc2opt"><label>Massage chair<input id="mC" type="checkbox"></label></div></div>';
+p.e.forEach((v,i)=>{let q=last(v[0]),pv=q?q.sets.map(s=>s.weight+"×"+s.reps).join(" | "):"No previous session";x+='<div class="mc2ex"><h3>'+v[0]+'</h3><div class="small">Target: '+v[1]+' × '+v[2]+'</div><div class="mc2prev">Previous: '+pv+'</div>';for(let j=0;j<v[1];j++){let wt=q&&q.sets[j]?q.sets[j].weight:"";x+='<div class="mc2set"><b>Set '+(j+1)+'</b><input class="mw" data-e="'+i+'" data-s="'+j+'" type="number" min="0" step=".5" placeholder="Weight" value="'+wt+'"><input class="mr" data-e="'+i+'" data-s="'+j+'" type="number" min="0" step="1" placeholder="Reps"></div>'}x+='</div>'});c().innerHTML=x+'<button class="yellow" onclick="MC2.done()">COMPLETE WORKOUT</button>'}
+function done(){let p=P[W],bad=false,ex=p.e.map((v,i)=>({name:v[0],target:v[2],sets:Array.from({length:v[1]},(_,j)=>{let a=document.querySelector('.mw[data-e="'+i+'"][data-s="'+j+'"]').value,b=document.querySelector('.mr[data-e="'+i+'"][data-s="'+j+'"]').value;if(a===""||b==="")bad=true;return{weight:+a,reps:+b}})}));if(bad){note("Gym Day","Enter weight and reps for every set.");return}let d=D(),k=dk(),e=d[k]||{};e.gymSession={workout:W,name:p.n,warmup:wU.checked,cooldown:cD.checked,redLight:rL.checked,massageChair:mC.checked,exercises:ex,completedAt:new Date().toISOString()};e.workout=true;e.workoutType="GYM DAY — WORKOUT "+W;e.cardio=wU.checked;e.redLight=rL.checked;e.massageChair=mC.checked;e.massageChairSkipped=!mC.checked;e.notes=p.n+" completed.";d[k]=e;S(d);try{if(typeof update==="function")update()}catch(z){}close();note("Workout Logged",p.n+" saved.")}
+function exportText(){let e=D()[dk()]||{},x="";if(e.runSession){let r=e.runSession;x+="\n\nRUN\nDistance: "+(+r.distance).toFixed(2)+" mi\nTime: "+r.time+"\nAverage Pace: "+r.pace+"\nNotes: "+(r.notes||"None")+"\nWeekly Running Miles: "+miles().toFixed(2)+" mi"}if(e.gymSession){let g=e.gymSession;x+="\n\nGYM DAY — WORKOUT "+g.workout+"\nWarm-up (5 min, speed 2.5, incline 15): "+(g.warmup?"YES":"NO")+"\nCooldown / Stretch: "+(g.cooldown?"YES":"NO")+"\nRed-light therapy: "+(g.redLight?"YES":"NO")+"\nMassage chair: "+(g.massageChair?"YES":"NO");g.exercises.forEach(v=>x+="\n"+v.name+": "+v.sets.map(s=>s.weight+"×"+s.reps).join(" | "))}return x}
+function patch(){if(typeof window.generateSummary!=="function"||window.generateSummary.__mc2)return;let old=window.generateSummary;window.generateSummary=function(){let z=old.apply(this,arguments),b=document.getElementById("summaryBox");if(b){let base=String(b.value||z||"").replace(/\n\nRUN\n[\s\S]*?(?=\n\nGYM DAY — WORKOUT|$)/,"").replace(/\n\nGYM DAY — WORKOUT [AB]\n[\s\S]*$/,"");b.value=base.trim()+exportText();return b.value}return z};window.generateSummary.__mc2=true}
+document.addEventListener("DOMContentLoaded",()=>{wm();setTimeout(patch,200);setTimeout(patch,1500);o().addEventListener("click",e=>{if(e.target===o())close()})});
+return{home,run,saveRun,gym,work,done,close};
+})();
+</script>
 </body>
 </html>
 
