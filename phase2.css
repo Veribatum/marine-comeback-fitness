@@ -1,1 +1,21 @@
-/* Phase II */
+/* Phase II fitness */
+.phase2ChoiceGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.phase2Miles{margin-top:12px;color:var(--muted);font-size:.92rem}
+.phase2Overlay{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;z-index:12000;padding:12px}
+.phase2Overlay.active{display:flex}
+.phase2Panel{width:min(96vw,760px);max-height:94vh;overflow:auto;border-radius:22px;border:1px solid rgba(216,189,100,.28);background:linear-gradient(145deg,#101810,#060807);padding:16px}
+.phase2Header{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid rgba(255,255,255,.1);padding-bottom:10px;margin-bottom:12px}
+.phase2Header h2{margin:0;color:#facc15}
+.phase2Close{width:auto!important;margin:0!important;padding:8px 12px!important;background:#252820!important;color:#fff!important}
+.phase2Exercise{border:1px solid rgba(255,255,255,.09);border-radius:16px;padding:12px;margin:10px 0;background:rgba(255,255,255,.035)}
+.phase2Exercise h3{margin:0 0 3px;color:#facc15}
+.phase2Previous{font-size:.82rem;color:var(--muted);margin:5px 0 9px}
+.phase2Set{display:grid;grid-template-columns:64px 1fr 1fr;gap:8px;align-items:center}
+.phase2Set input{margin:4px 0}
+.phase2ToggleGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+.phase2Toggle{border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:10px;background:rgba(255,255,255,.035)}
+.phase2Toggle label{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:850}
+.phase2Toggle input{width:28px;height:28px;margin:0}
+.phase2WorkoutChoices{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.phase2RunResult{padding:10px;border-radius:14px;background:rgba(255,255,255,.04);margin:8px 0 12px}
+@media(max-width:520px){.phase2ChoiceGrid,.phase2WorkoutChoices,.phase2ToggleGrid{grid-template-columns:1fr}.phase2Set{grid-template-columns:56px 1fr 1fr}}
