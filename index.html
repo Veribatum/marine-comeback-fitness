@@ -1837,7 +1837,12 @@ section:has(button[onclick*="saveDailyWithFeedback"]){
 <section class="card" id="fitnessPhase2">
 <h2>Fitness</h2><div class="small">APP REMEMBERS. COACH DECIDES.</div>
 <div class="row"><button class="yellow" type="button" onclick="MC2.run()">RUN</button><button type="button" onclick="MC2.gym()">GYM DAY</button></div>
-<div class="small" style="margin-top:10px">Weekly running: <strong id="mc2Miles">0.00 mi</strong></div>
+<div class="mcRunStats" aria-label="Running progress">
+  <div><span>This week</span><strong id="mc2Miles">0.00 mi</strong></div>
+  <div title="Fastest completed GPS mile split this week; not average pace"><span>Best mile · week</span><strong id="mc2BestMile">—</strong></div>
+  <div><span>This month</span><strong id="mc2MonthMiles">0.00 mi</strong></div>
+</div>
+<div class="mcRunLifetime">Total logged: <span id="mc2TotalMiles">0.00 mi</span> · Weeks start Monday</div>
 </section>
 
 <section class="card familyModeSection" id="familyMode">
@@ -7445,6 +7450,10 @@ setTimeout(wireButtons, 1500);
 </script>
 
 <style id="mc2css">
+#fitnessPhase2 .mcRunStats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid #ffffff18}
+#fitnessPhase2 .mcRunStats span{display:block;font-size:.68rem;color:var(--muted);line-height:1.3}
+#fitnessPhase2 .mcRunStats strong{display:block;font-size:1.05rem;color:var(--gold);margin-top:3px;white-space:nowrap}
+#fitnessPhase2 .mcRunLifetime{font-size:.65rem;color:var(--muted);margin-top:8px;opacity:.8}
 #mc2O{position:fixed;inset:0;background:#000e;display:none;align-items:center;justify-content:center;z-index:20000;padding:12px}#mc2O.on{display:flex}
 #mc2P{width:min(96vw,760px);max-height:94vh;overflow:auto;background:#0b1009;border:1px solid #d8bd6448;border-radius:20px;padding:15px}
 .mc2h{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid #ffffff18;padding-bottom:9px}.mc2h h2{color:#facc15;margin:0}.mc2x{width:auto!important;margin:0!important;padding:7px 12px!important}
@@ -7467,21 +7476,58 @@ function show(){o().classList.add("on")} function close(){o().classList.remove("
 function note(a,b){try{if(typeof mcToast==="function")mcToast(a,b);else alert(a+": "+b)}catch(e){}}
 function sec(v){let a=String(v||"").trim().split(":").map(Number);if(![2,3].includes(a.length)||a.some(x=>!Number.isFinite(x)||x<0))return 0;if(a.length===2&&a[1]>=60||a.length===3&&(a[1]>=60||a[2]>=60))return 0;return a.length===2?a[0]*60+a[1]:a[0]*3600+a[1]*60+a[2]}
 function ft(x){x=Math.round(x);let h=Math.floor(x/3600),m=Math.floor(x%3600/60),s=x%60;return(h?String(h).padStart(2,"0")+":":"")+String(m).padStart(h?2:1,"0")+":"+String(s).padStart(2,"0")}
-function miles(){let d=D(),n=new Date(),q=n.getDay(),m=new Date(n);m.setDate(n.getDate()+(q===0?-6:1-q));m.setHours(0,0,0,0);return Object.keys(d).reduce((z,k)=>new Date(k+"T12:00:00")>=m&&d[k].runSession?z+(+d[k].runSession.distance||0):z,0)}
-function wm(){let e=document.getElementById("mc2Miles");if(e)e.textContent=miles().toFixed(2)+" mi"}
+function sessions(e){
+  if(Array.isArray(e.runSessions)&&e.runSessions.length)return e.runSessions;
+  return e.runSession?[e.runSession]:[];
+}
+function recordRun(e,r){
+  e.runSessions=sessions(e).slice();
+  e.runSessions.push(r);
+  e.runSession=r;
+}
+function runStats(now=new Date()){
+  const today=dk(now),monday=new Date(now);
+  monday.setDate(now.getDate()-((now.getDay()+6)%7));
+  const weekStart=dk(monday),monthStart=today.slice(0,7)+"-01";
+  let week=0,month=0,total=0,best=null;
+  for(const [key,e] of Object.entries(D())){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(key)||key>today||!e)continue;
+    for(const r of sessions(e)){
+      const distance=Number(r.distance);
+      if(!Number.isFinite(distance)||distance<=0)continue;
+      total+=distance;
+      if(key>=monthStart)month+=distance;
+      if(key<weekStart)continue;
+      week+=distance;
+      let times=Array.isArray(r.mileSplits)?r.mileSplits.map(x=>Number(x.seconds)):[];
+      // Legacy exact-one-mile runs are usable; longer-run average pace is not a mile split.
+      if(!times.length&&Math.abs(distance-1)<1e-9)times=[Number(r.timeSeconds)||sec(r.time)];
+      for(const time of times)if(Number.isFinite(time)&&time>0&&(best===null||time<best))best=time;
+    }
+  }
+  return{week,month,total,best};
+}
+function miles(){return runStats().week}
+function wm(){
+  const r=runStats();
+  for(const [id,value] of Object.entries({mc2Miles:r.week.toFixed(2)+" mi",mc2MonthMiles:r.month.toFixed(2)+" mi",mc2TotalMiles:r.total.toFixed(2)+" mi",mc2BestMile:r.best===null?"—":ft(r.best)})){
+    const e=document.getElementById(id);if(e)e.textContent=value;
+  }
+}
 function home(){head("FITNESS","Choose today's mission.");c().innerHTML='<div class="mc2grid"><button class="yellow" onclick="MC2.run()">RUN</button><button onclick="MC2.gym()">GYM DAY</button></div>';show()}
 function run(){head("RUN","Live GPS tracking and spoken updates.");c().innerHTML="";show();if(window.MarineGPS)window.MarineGPS.mount();else c().textContent="GPS tracker unavailable. Refresh the page.";}
 function pace(){let d=+rD.value,s=sec(rT.value);rP.textContent=d>0&&s?ft(s/d)+"/mi":"—"}
-function saveRun(){let di=+rD.value,se=sec(rT.value);if(!(di>0)||!se){note("Run","Enter valid distance and time.");return}let d=D(),k=dk(),e=d[k]||{};e.runSession={distance:+di.toFixed(2),time:ft(se),timeSeconds:se,pace:ft(se/di)+"/mi",notes:rN.value.trim(),completedAt:new Date().toISOString()};e.workout=true;e.workoutType="RUN";e.cardio=true;e.notes=e.runSession.notes||"Run completed.";d[k]=e;S(d);wm();close();note("Run Logged",di.toFixed(2)+" mi • "+e.runSession.pace)}
+function saveRun(){let di=+rD.value,se=sec(rT.value);if(!(di>0)||!se){note("Run","Enter valid distance and time.");return}let d=D(),k=dk(),e=d[k]||{};recordRun(e,{distance:+di.toFixed(2),time:ft(se),timeSeconds:se,pace:ft(se/di)+"/mi",notes:rN.value.trim(),completedAt:new Date().toISOString()});e.workout=true;e.workoutType="RUN";e.cardio=true;e.notes=e.runSession.notes||"Run completed.";d[k]=e;S(d);wm();close();note("Run Logged",di.toFixed(2)+" mi • "+e.runSession.pace)}
 function last(n){let d=D(),ks=Object.keys(d).sort().reverse();for(let k of ks){let g=d[k]&&d[k].gymSession,x=g&&g.exercises&&g.exercises.find(v=>v.name===n);if(x)return x}return null}
 function gym(){head("GYM DAY","Choose Push or Pull.");c().innerHTML='<div class="mc2grid"><button class="yellow" onclick="MC2.work(\'A\')">WORKOUT A — PUSH</button><button onclick="MC2.work(\'B\')">WORKOUT B — PULL</button></div>';show()}
 function work(k){W=k;let p=P[k];head(p.n,"Enter actual weight and reps for every working set.");let x='<div class="mc2grid"><div class="mc2opt"><label>Warm-up <span class="small">5 min • 2.5 • incline 15</span><input id="wU" type="checkbox" checked></label></div><div class="mc2opt"><label>Cooldown / Stretch<input id="cD" type="checkbox"></label></div><div class="mc2opt"><label>Red-light therapy<input id="rL" type="checkbox"></label></div><div class="mc2opt"><label>Massage chair<input id="mC" type="checkbox"></label></div></div>';
 p.e.forEach((v,i)=>{let q=last(v[0]),pv=q?q.sets.map(s=>s.weight+"×"+s.reps).join(" | "):"No previous session";x+='<div class="mc2ex"><h3>'+v[0]+'</h3><div class="small">Target: '+v[1]+' × '+v[2]+'</div><div class="mc2prev">Previous: '+pv+'</div>';for(let j=0;j<v[1];j++){let wt=q&&q.sets[j]?q.sets[j].weight:"";x+='<div class="mc2set"><b>Set '+(j+1)+'</b><input class="mw" data-e="'+i+'" data-s="'+j+'" type="number" min="0" step=".5" placeholder="Weight" value="'+wt+'"><input class="mr" data-e="'+i+'" data-s="'+j+'" type="number" min="0" step="1" placeholder="Reps"></div>'}x+='</div>'});c().innerHTML=x+'<button class="yellow" onclick="MC2.done()">COMPLETE WORKOUT</button>'}
 function done(){let p=P[W],bad=false,ex=p.e.map((v,i)=>({name:v[0],target:v[2],sets:Array.from({length:v[1]},(_,j)=>{let a=document.querySelector('.mw[data-e="'+i+'"][data-s="'+j+'"]').value,b=document.querySelector('.mr[data-e="'+i+'"][data-s="'+j+'"]').value;if(a===""||b==="")bad=true;return{weight:+a,reps:+b}})}));if(bad){note("Gym Day","Enter weight and reps for every set.");return}let d=D(),k=dk(),e=d[k]||{};e.gymSession={workout:W,name:p.n,warmup:wU.checked,cooldown:cD.checked,redLight:rL.checked,massageChair:mC.checked,exercises:ex,completedAt:new Date().toISOString()};e.workout=true;e.workoutType="GYM DAY — WORKOUT "+W;e.cardio=wU.checked;e.redLight=rL.checked;e.massageChair=mC.checked;e.massageChairSkipped=!mC.checked;e.notes=p.n+" completed.";d[k]=e;S(d);try{if(typeof update==="function")update()}catch(z){}close();note("Workout Logged",p.n+" saved.")}
-function exportText(){let e=D()[dk()]||{},x="";if(e.runSession){let r=e.runSession;x+="\n\nRUN\nDistance: "+(+r.distance).toFixed(2)+" mi\nTime: "+r.time+"\nAverage Pace: "+r.pace+"\nNotes: "+(r.notes||"None")+"\nWeekly Running Miles: "+miles().toFixed(2)+" mi"}if(e.gymSession){let g=e.gymSession;x+="\n\nGYM DAY — WORKOUT "+g.workout+"\nWarm-up (5 min, speed 2.5, incline 15): "+(g.warmup?"YES":"NO")+"\nCooldown / Stretch: "+(g.cooldown?"YES":"NO")+"\nRed-light therapy: "+(g.redLight?"YES":"NO")+"\nMassage chair: "+(g.massageChair?"YES":"NO");g.exercises.forEach(v=>x+="\n"+v.name+": "+v.sets.map(s=>s.weight+"×"+s.reps).join(" | "))}return x}
+function exportText(){let e=D()[dk()]||{},x="";if(e.runSession){let r=e.runSession;x+="\n\nRUN\nDistance: "+(+r.distance).toFixed(2)+" mi\nTime: "+r.time+"\nAverage Pace: "+r.pace+"\nNotes: "+(r.notes||"None")+"\nWeekly Running Miles: "+miles().toFixed(2)+" mi"+"\nBest Mile This Week: "+(runStats().best===null?"Not recorded":ft(runStats().best))+"\nMonthly Running Miles: "+runStats().month.toFixed(2)+" mi"+"\nTotal Running Miles: "+runStats().total.toFixed(2)+" mi"}if(e.gymSession){let g=e.gymSession;x+="\n\nGYM DAY — WORKOUT "+g.workout+"\nWarm-up (5 min, speed 2.5, incline 15): "+(g.warmup?"YES":"NO")+"\nCooldown / Stretch: "+(g.cooldown?"YES":"NO")+"\nRed-light therapy: "+(g.redLight?"YES":"NO")+"\nMassage chair: "+(g.massageChair?"YES":"NO");g.exercises.forEach(v=>x+="\n"+v.name+": "+v.sets.map(s=>s.weight+"×"+s.reps).join(" | "))}return x}
 function patch(){if(typeof window.generateSummary!=="function"||window.generateSummary.__mc2)return;let old=window.generateSummary;window.generateSummary=function(){let z=old.apply(this,arguments),b=document.getElementById("summaryBox");if(b){let base=String(b.value||z||"").replace(/\n\nRUN\n[\s\S]*?(?=\n\nGYM DAY — WORKOUT|$)/,"").replace(/\n\nGYM DAY — WORKOUT [AB]\n[\s\S]*$/,"");b.value=base.trim()+exportText();return b.value}return z};window.generateSummary.__mc2=true}
 document.addEventListener("DOMContentLoaded",()=>{wm();setTimeout(patch,200);setTimeout(patch,1500);o().addEventListener("click",e=>{if(e.target===o())close()})});
-return{home,run,saveRun,gym,work,done,close};
+window.addEventListener("pageshow",wm);window.addEventListener("focus",wm);window.addEventListener("storage",wm);document.addEventListener("visibilitychange",()=>{if(!document.hidden)wm()});
+return{home,run,saveRun,gym,work,done,close,refreshRunStats:wm,runStats,recordRun};
 })();
 </script>
 <style>
@@ -7489,7 +7535,7 @@ return{home,run,saveRun,gym,work,done,close};
 </style>
 <script id="marine-gps-v1">
 (function(){
-let watch=null,start=0,paused=0,finishedSeconds=0,points=[],meters=0,lastVoice=0,turnCalled=false,tick=null,active=false,saved=false,lastStatus="";
+let watch=null,start=0,paused=0,finishedSeconds=0,points=[],meters=0,lastVoice=0,turnCalled=false,tick=null,active=false,saved=false,lastStatus="",mileSplits=[],lastMileSeconds=0;
 const R=6371000,rad=x=>x*Math.PI/180;
 function dist(a,b){let dlat=rad(b.latitude-a.latitude),dlon=rad(b.longitude-a.longitude),q=Math.sin(dlat/2)**2+Math.cos(rad(a.latitude))*Math.cos(rad(b.latitude))*Math.sin(dlon/2)**2;return 2*R*Math.atan2(Math.sqrt(q),Math.sqrt(1-q))}
 function elapsed(){return active?Math.max(0,Math.floor((Date.now()-start-paused)/1000)):finishedSeconds}
@@ -7497,8 +7543,15 @@ function fmt(t){t=Math.max(0,Math.round(t));return Math.floor(t/3600)?[Math.floo
 function speak(s){if(!document.getElementById("gpsVoice")?.checked||!('speechSynthesis' in window))return;try{speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(s))}catch(e){}}
 function ui(){let p=document.getElementById("gpsPanel");if(!p)return;let mi=meters/1609.344,t=elapsed();p.querySelector("#gpsStart").disabled=active;p.querySelector("#gpsFinish").disabled=saved||(!active&&!start);p.querySelector("#gpsDistance").textContent=mi.toFixed(2)+" mi";p.querySelector("#gpsTime").textContent=fmt(t);p.querySelector("#gpsPace").textContent=mi>.015?fmt(t/mi)+"/mi":"—"}
 function status(s){lastStatus=s;let n=document.getElementById("gpsStatus");if(n)n.textContent=s}
-function got(p){if(!active)return;let q={latitude:p.coords.latitude,longitude:p.coords.longitude,accuracy:p.coords.accuracy,time:p.timestamp};if(q.accuracy>40){status("GPS accuracy poor ("+Math.round(q.accuracy)+" m). Waiting for stronger signal.");return}let last=points.at(-1);if(last){let d=dist(last,q),dt=(q.time-last.time)/1000;if(dt<=0||d<3||d/dt>8)return;meters+=d}points.push(q);status("GPS active • accuracy "+Math.round(q.accuracy)+" m");let mi=meters/1609.344;if(Math.floor(mi)>lastVoice){lastVoice=Math.floor(mi);if(lastVoice>0)speak(lastVoice+" miles. Average pace "+(mi>0?fmt(elapsed()/mi):"unknown")+" per mile.")}let half=Number(document.getElementById("gpsTurn")?.value||1);if(half>0&&!turnCalled&&mi>=half){turnCalled=true;speak("Turn around now. You have reached your turnaround distance.")}ui()}
-function begin(){if(active)return;if(!navigator.geolocation){status("GPS unavailable on this device.");return}points=[];meters=0;lastVoice=0;turnCalled=false;paused=0;finishedSeconds=0;saved=false;start=Date.now();active=true;document.getElementById("gpsStart").disabled=true;document.getElementById("gpsFinish").disabled=false;status("Requesting GPS permission… Keep this page open and screen awake.");watch=navigator.geolocation.watchPosition(got,e=>status("GPS error: "+e.message),{enableHighAccuracy:true,maximumAge:0,timeout:20000});tick=setInterval(ui,1000);speak("Run started.");ui()}
+function got(p){if(!active)return;let q={latitude:p.coords.latitude,longitude:p.coords.longitude,accuracy:p.coords.accuracy,time:p.timestamp};if(q.accuracy>40){status("GPS accuracy poor ("+Math.round(q.accuracy)+" m). Waiting for stronger signal.");return}let last=points.at(-1);if(last){let d=dist(last,q),dt=(q.time-last.time)/1000;if(dt<=0||d<3||d/dt>8)return;const previousMeters=meters;meters+=d;
+let nextMile=mileSplits.length+1;
+while(nextMile*1609.344<=meters){
+  const fraction=(nextMile*1609.344-previousMeters)/d;
+  const crossingSeconds=Math.max(0,(last.time+fraction*(q.time-last.time)-start)/1000);
+  mileSplits.push({mile:nextMile,seconds:crossingSeconds-lastMileSeconds});
+  lastMileSeconds=crossingSeconds;nextMile++;
+}}points.push(q);status("GPS active • accuracy "+Math.round(q.accuracy)+" m");let mi=meters/1609.344;if(Math.floor(mi)>lastVoice){lastVoice=Math.floor(mi);if(lastVoice>0)speak(lastVoice+" miles. Average pace "+(mi>0?fmt(elapsed()/mi):"unknown")+" per mile.")}let half=Number(document.getElementById("gpsTurn")?.value||1);if(half>0&&!turnCalled&&mi>=half){turnCalled=true;speak("Turn around now. You have reached your turnaround distance.")}ui()}
+function begin(){if(active)return;if(!navigator.geolocation){status("GPS unavailable on this device.");return}points=[];meters=0;mileSplits=[];lastMileSeconds=0;lastVoice=0;turnCalled=false;paused=0;finishedSeconds=0;saved=false;start=Date.now();active=true;document.getElementById("gpsStart").disabled=true;document.getElementById("gpsFinish").disabled=false;status("Requesting GPS permission… Keep this page open and screen awake.");watch=navigator.geolocation.watchPosition(got,e=>status("GPS error: "+e.message),{enableHighAccuracy:true,maximumAge:0,timeout:20000});tick=setInterval(ui,1000);speak("Run started.");ui()}
 function finish(){
   if(saved||(!active&&!start))return;
   if(active){finishedSeconds=elapsed();active=false;}
@@ -7514,14 +7567,13 @@ function finish(){
     if(!d||typeof d!=="object"||Array.isArray(d))throw new Error("Invalid stored data");
     const now=new Date(),key=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-"+String(now.getDate()).padStart(2,"0");
     const e=d[key]||{};
-    e.runSession={distance:mi,time:fmt(seconds),timeSeconds:seconds,pace:seconds>0?fmt(seconds/mi)+"/mi":"—",notes:"Tracked with Marine Comeback GPS",completedAt:now.toISOString(),source:"GPS",track:points.map(p=>[+p.latitude.toFixed(6),+p.longitude.toFixed(6)])};
+    window.MC2.recordRun(e,{distance:mi,mileSplits:mileSplits.map(x=>({...x})),time:fmt(seconds),timeSeconds:seconds,pace:seconds>0?fmt(seconds/mi)+"/mi":"—",notes:"Tracked with Marine Comeback GPS",completedAt:now.toISOString(),source:"GPS",track:points.map(p=>[+p.latitude.toFixed(6),+p.longitude.toFixed(6)])});
     e.workout=true;e.workoutType="RUN";e.cardio=true;d[key]=e;
     localStorage.setItem("marine_data_v5",JSON.stringify(d));
     saved=true;
     const message="Run saved: "+mi.toFixed(3)+" miles in "+fmt(seconds)+".";
     status(message);
-    const w=document.getElementById("mc2Miles");
-    if(w){const monday=new Date(now);monday.setDate(now.getDate()-((now.getDay()+6)%7));monday.setHours(0,0,0,0);w.textContent=Object.entries(d).reduce((sum,[k,v])=>sum+(new Date(k+"T12:00:00")>=monday&&v.runSession?Number(v.runSession.distance)||0:0),0).toFixed(2)+" mi";}
+    window.MC2.refreshRunStats();
     try{if(typeof update==="function")update();}catch(err){console.error(err);}
     try{if(typeof mcToast==="function")mcToast("Run Logged",message);}catch(err){}
     speak("Run complete. "+mi.toFixed(2)+" miles.");
