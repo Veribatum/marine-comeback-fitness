@@ -1834,6 +1834,12 @@ section:has(button[onclick*="saveDailyWithFeedback"]){
 <div class="goblinCard" id="dailyGoblinCard"><img id="dailyGoblinImg" src="goblin_cards/drill-sergeant-goblin.webp" alt="Motivational goblin"><div><div class="goblinName" id="dailyGoblinName">Goblin of the Day</div><div class="goblinLine" id="dailyGoblinLine">Awaiting orders.</div><div class="goblinOrder" id="dailyGoblinOrder">Daily morale support, not medical advice.</div></div></div>
 <button class="yellow" onclick="openMissionBrief()">Give Me My Orders</button></section>
 
+<section class="card" id="fitnessPhase2">
+<h2>Fitness</h2><div class="small">APP REMEMBERS. COACH DECIDES.</div>
+<div class="row"><button class="yellow" type="button" onclick="MC2.run()">RUN</button><button type="button" onclick="MC2.gym()">GYM DAY</button></div>
+<div class="small" style="margin-top:10px">Weekly running: <strong id="mc2Miles">0.00 mi</strong></div>
+</section>
+
 <section class="card familyModeSection" id="familyMode">
   <h2>Family Mode ON</h2>
   <p class="small">Box breathing decompression. Leave operational stress outside before you walk in.</p>
@@ -1860,11 +1866,7 @@ section:has(button[onclick*="saveDailyWithFeedback"]){
 
 
 
-<section class="card" id="fitnessPhase2">
-<h2>Fitness</h2><div class="small">APP REMEMBERS. COACH DECIDES.</div>
-<div class="row"><button class="yellow" type="button" onclick="MC2.run()">RUN</button><button type="button" onclick="MC2.gym()">GYM DAY</button></div>
-<div class="small" style="margin-top:10px">Weekly running: <strong id="mc2Miles">0.00 mi</strong></div>
-</section>
+
 <section class="card" id="lifeBalance">
   <h2>Recovery / Life Balance</h2>
   <div class="small">Smart rest is not quitting. It is staying in the fight long-term.</div>
@@ -7487,22 +7489,51 @@ return{home,run,saveRun,gym,work,done,close};
 </style>
 <script id="marine-gps-v1">
 (function(){
-let watch=null,start=0,paused=0,finishedSeconds=0,points=[],meters=0,lastVoice=0,turnCalled=false,tick=null,active=false;
+let watch=null,start=0,paused=0,finishedSeconds=0,points=[],meters=0,lastVoice=0,turnCalled=false,tick=null,active=false,saved=false,lastStatus="";
 const R=6371000,rad=x=>x*Math.PI/180;
 function dist(a,b){let dlat=rad(b.latitude-a.latitude),dlon=rad(b.longitude-a.longitude),q=Math.sin(dlat/2)**2+Math.cos(rad(a.latitude))*Math.cos(rad(b.latitude))*Math.sin(dlon/2)**2;return 2*R*Math.atan2(Math.sqrt(q),Math.sqrt(1-q))}
-function elapsed(){return Math.floor((Date.now()-start-paused)/1000)}
-function fmt(t){return Math.floor(t/3600)?[Math.floor(t/3600),Math.floor(t%3600/60),t%60].map(v=>String(v).padStart(2,"0")).join(":"):[Math.floor(t/60),t%60].map((v,i)=>String(v).padStart(i?2:1,"0")).join(":")}
-function speak(s){if(!document.getElementById("gpsVoice").checked||!('speechSynthesis' in window))return;try{speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(s))}catch(e){}}
-function ui(){let p=document.getElementById("gpsPanel");if(!p)return;let mi=meters/1609.344,t=active?elapsed():0;p.querySelector("#gpsDistance").textContent=mi.toFixed(2)+" mi";p.querySelector("#gpsTime").textContent=fmt(t);p.querySelector("#gpsPace").textContent=mi>.015?fmt(t/mi)+"/mi":"—"}
-function status(s){let n=document.getElementById("gpsStatus");if(n)n.textContent=s}
-function got(p){let q={latitude:p.coords.latitude,longitude:p.coords.longitude,accuracy:p.coords.accuracy,time:p.timestamp};if(q.accuracy>40){status("GPS accuracy poor ("+Math.round(q.accuracy)+" m). Waiting for stronger signal.");return}let last=points.at(-1);if(last){let d=dist(last,q),dt=(q.time-last.time)/1000;if(dt<=0||d<3||d/dt>8)return;meters+=d}points.push(q);status("GPS active • accuracy "+Math.round(q.accuracy)+" m");let mi=meters/1609.344;if(Math.floor(mi)>lastVoice){lastVoice=Math.floor(mi);if(lastVoice>0)speak(lastVoice+" miles. Average pace "+(mi>0?fmt(elapsed()/mi):"unknown")+" per mile.")}let half=Number(document.getElementById("gpsTurn").value);if(half>0&&!turnCalled&&mi>=half){turnCalled=true;speak("Turn around now. You have reached your turnaround distance.")}ui()}
-function begin(){if(active)return;if(!navigator.geolocation){status("GPS unavailable on this device.");return}points=[];meters=0;lastVoice=0;turnCalled=false;paused=0;finishedSeconds=0;start=Date.now();active=true;document.getElementById("gpsStart").disabled=true;document.getElementById("gpsFinish").disabled=false;status("Requesting GPS permission… Keep this page open and screen awake.");watch=navigator.geolocation.watchPosition(got,e=>status("GPS error: "+e.message),{enableHighAccuracy:true,maximumAge:0,timeout:20000});tick=setInterval(ui,1000);speak("Run started.");ui()}
-function finish(){if(!active)return;let seconds=elapsed();finishedSeconds=seconds;active=false;if(watch!==null)navigator.geolocation.clearWatch(watch);watch=null;clearInterval(tick);document.getElementById("gpsStart").disabled=false;document.getElementById("gpsFinish").disabled=true;let mi=meters/1609.344;if(mi<.01){status("No GPS distance recorded. Run not saved. Check location permission and GPS accuracy, then try again.");return}let d;try{d=JSON.parse(localStorage.getItem("marine_data_v5")||"{}")}catch(e){d={}}let now=new Date(),key=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-"+String(now.getDate()).padStart(2,"0");let e=d[key]||{};e.runSession={distance:+mi.toFixed(2),time:fmt(seconds),timeSeconds:seconds,pace:fmt(seconds/mi)+"/mi",notes:"Tracked with Marine Comeback GPS",completedAt:now.toISOString(),source:"GPS",track:points.map(p=>[+p.latitude.toFixed(6),+p.longitude.toFixed(6)])};e.workout=true;e.workoutType="RUN";e.cardio=true;d[key]=e;localStorage.setItem("marine_data_v5",JSON.stringify(d));status("Run saved: "+mi.toFixed(2)+" miles in "+fmt(seconds)+".");try{if(window.MC2&&typeof window.MC2.home==="function"){let w=document.getElementById("mc2Miles");if(w){let today=new Date(),monday=new Date(today);monday.setDate(today.getDate()-((today.getDay()+6)%7));monday.setHours(0,0,0,0);w.textContent=Object.entries(d).reduce((sum,[k,v])=>sum+(new Date(k+"T12:00:00")>=monday&&v.runSession?Number(v.runSession.distance)||0:0),0).toFixed(2)+" mi"}}}catch(err){}speak("Run complete. "+mi.toFixed(2)+" miles.");ui()}
-function mount(){let root=document.getElementById("mc2C");if(!root||document.getElementById("gpsPanel"))return;root.insertAdjacentHTML("beforeend",'<div id="gpsPanel"><h3>GPS RUN TRACKER (BETA)</h3><div class="gpsGrid"><div>Distance<div class="gpsMetric" id="gpsDistance">0.00 mi</div></div><div>Time<div class="gpsMetric" id="gpsTime">0:00</div></div><div>Average pace<div class="gpsMetric" id="gpsPace">—</div></div><div><label>Turnaround at (miles)</label><input type="number" id="gpsTurn" min="0" step=".1" value="1"></div></div><label><input type="checkbox" id="gpsVoice" checked> Spoken mile updates and turnaround cue</label><div class="gpsGrid"><button id="gpsStart" type="button">START GPS RUN</button><button id="gpsFinish" type="button" disabled>FINISH & SAVE</button></div><p class="gpsStatus" id="gpsStatus">Keep your iPhone screen awake during the run. Background tracking is not reliable in Safari.</p></div>');document.getElementById("gpsStart").onclick=begin;document.getElementById("gpsFinish").onclick=finish}
+function elapsed(){return active?Math.max(0,Math.floor((Date.now()-start-paused)/1000)):finishedSeconds}
+function fmt(t){t=Math.max(0,Math.round(t));return Math.floor(t/3600)?[Math.floor(t/3600),Math.floor(t%3600/60),t%60].map(v=>String(v).padStart(2,"0")).join(":"):[Math.floor(t/60),t%60].map((v,i)=>String(v).padStart(i?2:1,"0")).join(":")}
+function speak(s){if(!document.getElementById("gpsVoice")?.checked||!('speechSynthesis' in window))return;try{speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(s))}catch(e){}}
+function ui(){let p=document.getElementById("gpsPanel");if(!p)return;let mi=meters/1609.344,t=elapsed();p.querySelector("#gpsStart").disabled=active;p.querySelector("#gpsFinish").disabled=saved||(!active&&!start);p.querySelector("#gpsDistance").textContent=mi.toFixed(2)+" mi";p.querySelector("#gpsTime").textContent=fmt(t);p.querySelector("#gpsPace").textContent=mi>.015?fmt(t/mi)+"/mi":"—"}
+function status(s){lastStatus=s;let n=document.getElementById("gpsStatus");if(n)n.textContent=s}
+function got(p){if(!active)return;let q={latitude:p.coords.latitude,longitude:p.coords.longitude,accuracy:p.coords.accuracy,time:p.timestamp};if(q.accuracy>40){status("GPS accuracy poor ("+Math.round(q.accuracy)+" m). Waiting for stronger signal.");return}let last=points.at(-1);if(last){let d=dist(last,q),dt=(q.time-last.time)/1000;if(dt<=0||d<3||d/dt>8)return;meters+=d}points.push(q);status("GPS active • accuracy "+Math.round(q.accuracy)+" m");let mi=meters/1609.344;if(Math.floor(mi)>lastVoice){lastVoice=Math.floor(mi);if(lastVoice>0)speak(lastVoice+" miles. Average pace "+(mi>0?fmt(elapsed()/mi):"unknown")+" per mile.")}let half=Number(document.getElementById("gpsTurn")?.value||1);if(half>0&&!turnCalled&&mi>=half){turnCalled=true;speak("Turn around now. You have reached your turnaround distance.")}ui()}
+function begin(){if(active)return;if(!navigator.geolocation){status("GPS unavailable on this device.");return}points=[];meters=0;lastVoice=0;turnCalled=false;paused=0;finishedSeconds=0;saved=false;start=Date.now();active=true;document.getElementById("gpsStart").disabled=true;document.getElementById("gpsFinish").disabled=false;status("Requesting GPS permission… Keep this page open and screen awake.");watch=navigator.geolocation.watchPosition(got,e=>status("GPS error: "+e.message),{enableHighAccuracy:true,maximumAge:0,timeout:20000});tick=setInterval(ui,1000);speak("Run started.");ui()}
+function finish(){
+  if(saved||(!active&&!start))return;
+  if(active){finishedSeconds=elapsed();active=false;}
+  if(watch!==null)navigator.geolocation.clearWatch(watch);
+  watch=null;clearInterval(tick);tick=null;ui();
+  const seconds=finishedSeconds,mi=meters/1609.344;
+  if(!(mi>0)){
+    status("Tracking stopped. No GPS distance recorded, so no run was saved. Check location permission and try again.");
+    return;
+  }
+  try{
+    const d=JSON.parse(localStorage.getItem("marine_data_v5")||"{}");
+    if(!d||typeof d!=="object"||Array.isArray(d))throw new Error("Invalid stored data");
+    const now=new Date(),key=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-"+String(now.getDate()).padStart(2,"0");
+    const e=d[key]||{};
+    e.runSession={distance:mi,time:fmt(seconds),timeSeconds:seconds,pace:seconds>0?fmt(seconds/mi)+"/mi":"—",notes:"Tracked with Marine Comeback GPS",completedAt:now.toISOString(),source:"GPS",track:points.map(p=>[+p.latitude.toFixed(6),+p.longitude.toFixed(6)])};
+    e.workout=true;e.workoutType="RUN";e.cardio=true;d[key]=e;
+    localStorage.setItem("marine_data_v5",JSON.stringify(d));
+    saved=true;
+    const message="Run saved: "+mi.toFixed(3)+" miles in "+fmt(seconds)+".";
+    status(message);
+    const w=document.getElementById("mc2Miles");
+    if(w){const monday=new Date(now);monday.setDate(now.getDate()-((now.getDay()+6)%7));monday.setHours(0,0,0,0);w.textContent=Object.entries(d).reduce((sum,[k,v])=>sum+(new Date(k+"T12:00:00")>=monday&&v.runSession?Number(v.runSession.distance)||0:0),0).toFixed(2)+" mi";}
+    try{if(typeof update==="function")update();}catch(err){console.error(err);}
+    try{if(typeof mcToast==="function")mcToast("Run Logged",message);}catch(err){}
+    speak("Run complete. "+mi.toFixed(2)+" miles.");
+  }catch(err){
+    console.error(err);
+    status("Tracking stopped, but saving failed. Your run is still here. Tap FINISH & SAVE to retry before starting another run.");
+  }
+  ui();
+}
+function mount(){let root=document.getElementById("mc2C");if(!root||document.getElementById("gpsPanel"))return;root.insertAdjacentHTML("beforeend",'<div id="gpsPanel"><h3>GPS RUN TRACKER (BETA)</h3><div class="gpsGrid"><div>Distance<div class="gpsMetric" id="gpsDistance">0.00 mi</div></div><div>Time<div class="gpsMetric" id="gpsTime">0:00</div></div><div>Average pace<div class="gpsMetric" id="gpsPace">—</div></div><div><label>Turnaround at (miles)</label><input type="number" id="gpsTurn" min="0" step=".1" value="1"></div></div><label><input type="checkbox" id="gpsVoice" checked> Spoken mile updates and turnaround cue</label><div class="gpsGrid"><button id="gpsStart" type="button">START GPS RUN</button><button id="gpsFinish" type="button" disabled>FINISH & SAVE</button></div><p class="gpsStatus" id="gpsStatus">Keep your iPhone screen awake during the run. Background tracking is not reliable in Safari.</p></div>');document.getElementById("gpsStart").onclick=begin;document.getElementById("gpsFinish").onclick=finish;ui();if(lastStatus)status(lastStatus)}
 window.MarineGPS={mount,active:()=>active};
 })();
 </script>
 </body>
 </html>
-
-
