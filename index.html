@@ -1805,6 +1805,7 @@ section:has(button[onclick*="saveDailyWithFeedback"]){
 }
 </style>
 
+<!-- Legacy worker migration guard: src="phase2.js" is retired; use the built-in MC2 interface. -->
 </head>
 <body>
 
@@ -7467,7 +7468,7 @@ setTimeout(wireButtons, 1500);
 window.MC2=(function(){
 const K="marine_data_v5",P={
 A:{n:"WORKOUT A — PUSH",e:[["Chest Press",3,"8–12"],["Incline Chest Press",3,"8–12"],["Shoulder Press",3,"8–12"],["Lateral Raise",3,"12–15"],["Triceps Pressdown",3,"10–15"],["Overhead Triceps Extension",3,"10–15"]]},
-B:{n:"WORKOUT B — PULL",e:[["Lat Pulldown",3,"8–12"],["Seated Cable Row",3,"8–12"],["Rear-Delt Fly / Reverse Pec Deck",3,"12–15"],["Cable or Machine Curl",3,"10–15"],["Hammer Curl",3,"10–15"],["Preacher Curl",2,"10–15"]]}};let W=null;
+B:{n:"WORKOUT B — PULL",e:[["Lat Pulldown",3,"8–12"],["Seated Cable Row",3,"8–12"],["Rear-Delt Fly / Reverse Pec Deck",3,"12–15"],["Cable or Machine Curl",3,"10–15"],["Hammer Curl",3,"10–15"],["Preacher Curl",2,"10–15"]]}};let W=null,minimum=false;
 const D=()=>{try{return JSON.parse(localStorage.getItem(K)||"{}")}catch(e){return{}}},S=d=>localStorage.setItem(K,JSON.stringify(d));
 const dk=(d=new Date())=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 const c=()=>document.getElementById("mc2C"),o=()=>document.getElementById("mc2O");
@@ -7520,12 +7521,13 @@ function pace(){let d=+rD.value,s=sec(rT.value);rP.textContent=d>0&&s?ft(s/d)+"/
 function saveRun(){let di=+rD.value,se=sec(rT.value);if(!(di>0)||!se){note("Run","Enter valid distance and time.");return}let d=D(),k=dk(),e=d[k]||{};recordRun(e,{distance:+di.toFixed(2),time:ft(se),timeSeconds:se,pace:ft(se/di)+"/mi",notes:rN.value.trim(),completedAt:new Date().toISOString()});e.workout=true;e.workoutType="RUN";e.cardio=true;e.notes=e.runSession.notes||"Run completed.";d[k]=e;S(d);wm();close();note("Run Logged",di.toFixed(2)+" mi • "+e.runSession.pace)}
 function last(n){let d=D(),ks=Object.keys(d).sort().reverse();for(let k of ks){let g=d[k]&&d[k].gymSession,x=g&&g.exercises&&g.exercises.find(v=>v.name===n);if(x)return x}return null}
 function gym(){head("GYM DAY","Choose Push or Pull.");c().innerHTML='<div class="mc2grid"><button class="yellow" onclick="MC2.work(\'A\')">WORKOUT A — PUSH</button><button onclick="MC2.work(\'B\')">WORKOUT B — PULL</button></div>';show()}
-function work(k){W=k;let p=P[k];head(p.n,"Enter actual weight and reps for every working set.");let x='<div class="mc2grid"><div class="mc2opt"><label>Warm-up <span class="small">5 min • 2.5 • incline 15</span><input id="wU" type="checkbox" checked></label></div><div class="mc2opt"><label>Cooldown / Stretch<input id="cD" type="checkbox"></label></div><div class="mc2opt"><label>Red-light therapy<input id="rL" type="checkbox"></label></div><div class="mc2opt"><label>Massage chair<input id="mC" type="checkbox"></label></div></div>';
+function program(){const p=P[W];return minimum?{n:p.n+" — MINIMUM",e:p.e.slice(0,2).map(v=>[v[0],2,v[2]])}:p}
+function work(k,short=false){W=k;minimum=short;let p=program();head(p.n,"Enter actual weight and reps for every working set.");let x='<div class="mc2grid"><div class="mc2opt"><label>Warm-up <span class="small">5 min • 2.5 • incline 15</span><input id="wU" type="checkbox" checked></label></div><div class="mc2opt"><label>Cooldown / Stretch<input id="cD" type="checkbox"></label></div><div class="mc2opt"><label>Red-light therapy<input id="rL" type="checkbox"></label></div><div class="mc2opt"><label>Massage chair<input id="mC" type="checkbox"></label></div></div>';
 p.e.forEach((v,i)=>{let q=last(v[0]),pv=q?q.sets.map(s=>s.weight+"×"+s.reps).join(" | "):"No previous session";x+='<div class="mc2ex"><h3>'+v[0]+'</h3><div class="small">Target: '+v[1]+' × '+v[2]+'</div><div class="mc2prev">Previous: '+pv+'</div>';for(let j=0;j<v[1];j++){let wt=q&&q.sets[j]?q.sets[j].weight:"";x+='<div class="mc2set"><b>Set '+(j+1)+'</b><input class="mw" data-e="'+i+'" data-s="'+j+'" type="number" min="0" step=".5" placeholder="Weight" value="'+wt+'"><input class="mr" data-e="'+i+'" data-s="'+j+'" type="number" min="0" step="1" placeholder="Reps"></div>'}x+='</div>'});c().innerHTML=x+'<button class="yellow" onclick="MC2.done()">COMPLETE WORKOUT</button>'}
-function done(){let p=P[W],bad=false,ex=p.e.map((v,i)=>({name:v[0],target:v[2],sets:Array.from({length:v[1]},(_,j)=>{let a=document.querySelector('.mw[data-e="'+i+'"][data-s="'+j+'"]').value,b=document.querySelector('.mr[data-e="'+i+'"][data-s="'+j+'"]').value;if(a===""||b==="")bad=true;return{weight:+a,reps:+b}})}));if(bad){note("Gym Day","Enter weight and reps for every set.");return}let d=D(),k=dk(),e=d[k]||{};e.gymSession={workout:W,name:p.n,warmup:wU.checked,cooldown:cD.checked,redLight:rL.checked,massageChair:mC.checked,exercises:ex,completedAt:new Date().toISOString()};e.workout=true;e.workoutType="GYM DAY — WORKOUT "+W;e.cardio=wU.checked;e.redLight=rL.checked;e.massageChair=mC.checked;e.massageChairSkipped=!mC.checked;e.notes=p.n+" completed.";d[k]=e;S(d);try{if(typeof update==="function")update()}catch(z){}close();note("Workout Logged",p.n+" saved.")}
-function exportText(){let e=D()[dk()]||{},x="";if(e.runSession){let r=e.runSession;x+="\n\nRUN\nDistance: "+(+r.distance).toFixed(2)+" mi\nTime: "+r.time+"\nAverage Pace: "+r.pace+"\nNotes: "+(r.notes||"None")+"\nWeekly Running Miles: "+miles().toFixed(2)+" mi"+"\nBest Mile This Week: "+(runStats().best===null?"Not recorded":ft(runStats().best))+"\nMonthly Running Miles: "+runStats().month.toFixed(2)+" mi"+"\nTotal Running Miles: "+runStats().total.toFixed(2)+" mi"}if(e.gymSession){let g=e.gymSession;x+="\n\nGYM DAY — WORKOUT "+g.workout+"\nWarm-up (5 min, speed 2.5, incline 15): "+(g.warmup?"YES":"NO")+"\nCooldown / Stretch: "+(g.cooldown?"YES":"NO")+"\nRed-light therapy: "+(g.redLight?"YES":"NO")+"\nMassage chair: "+(g.massageChair?"YES":"NO");g.exercises.forEach(v=>x+="\n"+v.name+": "+v.sets.map(s=>s.weight+"×"+s.reps).join(" | "))}return x}
+function done(){let p=program(),bad=false,ex=p.e.map((v,i)=>({name:v[0],target:v[2],sets:Array.from({length:v[1]},(_,j)=>{let a=document.querySelector('.mw[data-e="'+i+'"][data-s="'+j+'"]').value,b=document.querySelector('.mr[data-e="'+i+'"][data-s="'+j+'"]').value;if(a===""||b==="")bad=true;return{weight:+a,reps:+b}})}));if(bad){note("Gym Day","Enter weight and reps for every set.");return}let d=D(),k=dk(),e=d[k]||{};e.gymSession={workout:W,minimum,name:p.n,warmup:wU.checked,cooldown:cD.checked,redLight:rL.checked,massageChair:mC.checked,exercises:ex,completedAt:new Date().toISOString()};e.workout=true;e.workoutType="GYM DAY — WORKOUT "+W;e.cardio=wU.checked;e.redLight=rL.checked;e.massageChair=mC.checked;e.massageChairSkipped=!mC.checked;e.notes=p.n+" completed.";d[k]=e;S(d);if(window.MarineJourney)MarineJourney.render(true);try{if(typeof update==="function")update()}catch(z){}close();note("Workout Logged",p.n+" saved.")}
+function exportText(){let e=D()[dk()]||{},x="";if(e.runSession){let r=e.runSession;x+="\n\nRUN\nDistance: "+(+r.distance).toFixed(2)+" mi\nTime: "+r.time+"\nAverage Pace: "+r.pace+"\nNotes: "+(r.notes||"None")+"\nWeekly Running Miles: "+miles().toFixed(2)+" mi"+"\nBest Mile This Week: "+(runStats().best===null?"Not recorded":ft(runStats().best))+"\nMonthly Running Miles: "+runStats().month.toFixed(2)+" mi"+"\nTotal Running Miles: "+runStats().total.toFixed(2)+" mi"}if(e.gymSession){let g=e.gymSession;x+="\n\nGYM DAY — WORKOUT "+g.workout+"\nSession: "+(g.minimum?"Minimum":"Full")+"\nWarm-up (5 min, speed 2.5, incline 15): "+(g.warmup?"YES":"NO")+"\nCooldown / Stretch: "+(g.cooldown?"YES":"NO")+"\nRed-light therapy: "+(g.redLight?"YES":"NO")+"\nMassage chair: "+(g.massageChair?"YES":"NO");g.exercises.forEach(v=>x+="\n"+v.name+": "+v.sets.map(s=>s.weight+"×"+s.reps).join(" | "))}return x}
 function patch(){if(typeof window.generateSummary!=="function"||window.generateSummary.__mc2)return;let old=window.generateSummary;window.generateSummary=function(){let z=old.apply(this,arguments),b=document.getElementById("summaryBox");if(b){let base=String(b.value||z||"").replace(/\n\nRUN\n[\s\S]*?(?=\n\nGYM DAY — WORKOUT|$)/,"").replace(/\n\nGYM DAY — WORKOUT [AB]\n[\s\S]*$/,"");b.value=base.trim()+exportText();return b.value}return z};window.generateSummary.__mc2=true}
-document.addEventListener("DOMContentLoaded",()=>{wm();setTimeout(patch,200);setTimeout(patch,1500);o().addEventListener("click",e=>{if(e.target===o())close()})});
+document.addEventListener("DOMContentLoaded",()=>{wm();setTimeout(patch,200);setTimeout(patch,1500);o().addEventListener("click",e=>{if(e.target===o()&&!window.MarineGPS?.active())close()})});
 window.addEventListener("pageshow",wm);window.addEventListener("focus",wm);window.addEventListener("storage",wm);document.addEventListener("visibilitychange",()=>{if(!document.hidden)wm()});
 return{home,run,saveRun,gym,work,done,close,refreshRunStats:wm,runStats,recordRun};
 })();
@@ -7551,7 +7553,7 @@ while(nextMile*1609.344<=meters){
   const crossingSeconds=Math.max(0,(last.time+fraction*(q.time-last.time)-start)/1000);
   mileSplits.push({mile:nextMile,seconds:crossingSeconds-lastMileSeconds,totalSeconds:crossingSeconds});announceMile(nextMile,crossingSeconds-lastMileSeconds,crossingSeconds);
   lastMileSeconds=crossingSeconds;nextMile++;
-}}points.push(q);status("GPS active • accuracy "+Math.round(q.accuracy)+" m");let mi=meters/1609.344;if(Math.floor(mi)>lastVoice)lastVoice=Math.floor(mi)let half=Number(document.getElementById("gpsTurn")?.value||1);if(half>0&&!turnCalled&&mi>=half){turnCalled=true;if(Math.abs(half-Math.round(half))>.001)speak("Turn around now. You have reached your turnaround distance.")}ui()}
+}}points.push(q);status("GPS active • accuracy "+Math.round(q.accuracy)+" m");let mi=meters/1609.344;if(Math.floor(mi)>lastVoice)lastVoice=Math.floor(mi);let half=Number(document.getElementById("gpsTurn")?.value||1);if(half>0&&!turnCalled&&mi>=half){turnCalled=true;if(Math.abs(half-Math.round(half))>.001)speak("Turn around now. You have reached your turnaround distance.")}ui()}
 function begin(){if(active)return;if(!navigator.geolocation){status("GPS unavailable on this device.");return}points=[];meters=0;mileSplits=[];lastMileSeconds=0;lastVoice=0;turnCalled=false;paused=0;finishedSeconds=0;saved=false;start=Date.now();active=true;document.getElementById("gpsStart").disabled=true;document.getElementById("gpsFinish").disabled=false;status("Requesting GPS permission… Keep this page open and screen awake.");watch=navigator.geolocation.watchPosition(got,e=>status("GPS error: "+e.message),{enableHighAccuracy:true,maximumAge:0,timeout:20000});tick=setInterval(ui,1000);speak("Run started.");ui()}
 function finish(){
   if(saved||(!active&&!start))return;
@@ -7574,7 +7576,7 @@ function finish(){
     saved=true;
     const message="Run saved: "+mi.toFixed(3)+" miles in "+fmt(seconds)+".";
     status(message);
-    window.MC2.refreshRunStats();
+    window.MC2.refreshRunStats();if(window.MarineJourney)MarineJourney.render(true);
     try{if(typeof update==="function")update();}catch(err){console.error(err);}
     try{if(typeof mcToast==="function")mcToast("Run Logged",message);}catch(err){}
     speak("Run complete. "+mi.toFixed(2)+" miles.");
@@ -7588,5 +7590,150 @@ function mount(){let root=document.getElementById("mc2C");if(!root||document.get
 window.MarineGPS={mount,active:()=>active};
 })();
 </script>
+<style id="marine-journey-css">
+#mcJourney{margin-top:14px;border-top:1px solid #ffffff20;padding-top:12px}
+#mcJourney .jTop{display:flex;justify-content:space-between;align-items:center;gap:8px}
+#mcJourney .jTop strong{color:var(--gold);font-size:.9rem}
+#mcJourney progress{width:100%;height:7px;accent-color:var(--greenBright);margin:8px 0}
+#mcJourney details{margin-top:10px}#mcJourney summary{cursor:pointer;color:var(--gold);font-size:.85rem;padding:8px 0}
+.jDialog{border:1px solid #d8bd6480;border-radius:20px;padding:18px;background:#101810;color:var(--text);width:min(94vw,620px);max-height:90dvh;overflow:auto}
+.jDialog::backdrop{background:#000c}.jDialog .jClose{float:right;width:auto;margin:0 0 8px 8px;padding:8px 13px}
+.jBrief{display:flex;gap:12px;align-items:center;clear:both}.jBrief img{width:95px;height:110px;object-fit:contain}
+.jChoices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;clear:both}.jChoices button{font-size:.78rem;padding:12px 5px}
+.jCompare{display:grid;grid-template-columns:1fr 1fr;gap:10px}.jCompare figure{margin:0}.jCompare img{width:100%;height:230px;object-fit:contain;background:#070907;border-radius:10px}.jCompare figcaption{font-size:.72rem;color:var(--muted);margin-top:5px}
+#jPhotoStatus,#jStatus{font-size:.82rem;line-height:1.4;color:var(--muted)}
+.jDialog video{max-height:230px;width:100%;border-radius:12px}
+@media(max-width:360px){.jBrief img{width:65px}.jCompare img{height:180px}}
+</style>
+<dialog id="jMission" class="jDialog" aria-labelledby="jMissionTitle">
+ <button type="button" class="secondary jClose" onclick="MarineJourney.close()">Close</button>
+ <h2 id="jMissionTitle">Goblin deployment</h2>
+ <div class="jBrief"><img src="goblin_cards/drill-sergeant-goblin.webp" alt="Your drill sergeant goblin"><div><strong id="jPep"></strong><p class="small">Arm candy is the long game. Choose the work you can do today.</p></div></div>
+ <div id="jMedia"></div>
+ <p id="jMissionState" class="small"></p>
+ <div class="jChoices"><button type="button" class="yellow" onclick="MarineJourney.choose('full')">Full</button><button type="button" onclick="MarineJourney.choose('minimum')">Minimum</button><button type="button" class="secondary" onclick="MarineJourney.choose('recovery')">Recovery</button></div>
+ <p class="tiny">Full: your existing Run or Push/Pull. Minimum: two exercises, two sets each. Recovery: rest without a running prompt. Choose movements appropriate for how you feel.</p>
+ <div id="jPlan"></div>
+</dialog>
+<script id="marine-journey-js">
+window.MarineJourney=(()=>{
+ const KEY="marine_journey_v1",STORE="marine_data_v5",$=id=>document.getElementById(id);
+ const day=(d=new Date())=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+ function read(k){const v=JSON.parse(localStorage.getItem(k)||"{}");if(!v||typeof v!=="object"||Array.isArray(v))throw Error("Stored data could not be read");return v}
+ function state(){const s=read(KEY);s.awards=s.awards||{};s.plans=s.plans||{};return s}
+ const write=s=>localStorage.setItem(KEY,JSON.stringify(s));
+ function feedback(t,m){if(typeof mcToast==="function")mcToast(t,m)}
+ function reconcile(){
+   const s=state(),d=read(STORE),today=day();let added=0,previous=null;
+   for(const k of Object.keys(d).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k)&&k<=today).sort()){
+     const e=d[k]||{},worked=!!(e.workout||e.gymSession||e.runSession);
+     if(worked){
+       const base=e.gymSession?.minimum?60:100;
+       if(!s.awards[k+":work"]){s.awards[k+":work"]={xp:base,label:e.gymSession?.minimum?"Minimum mission":"Workout completed"};added+=k===today?base:0;}
+       const gap=previous?(new Date(k+"T12:00:00")-new Date(previous+"T12:00:00"))/86400000:0;
+       if(gap>=7&&!s.awards[k+":comeback"]){s.awards[k+":comeback"]={xp:50,label:"Comeback"};added+=k===today?50:0;}
+       previous=k;
+     }
+     if((e.restDay||e.recovery)&&!s.awards[k+":recovery"]&&!s.awards[k+":work"]){s.awards[k+":recovery"]={xp:20,label:"Recovery recorded"};added+=k===today?20:0;}
+   }
+   write(s);return{state:s,added,xp:Object.values(s.awards).reduce((sum,a)=>sum+(Number(a.xp)||0),0)};
+ }
+ function render(celebrate=false){
+   try{
+     const r=reconcile(),level=1+Math.floor(r.xp/500),names=["Comeback Recruit","Couch Defector","Goblin Regular","Dad Bod Challenger","Arm Candy Contender"];
+     $("jRank").textContent="Level "+level+" · "+names[Math.min(names.length-1,level-1)];
+     $("jXP").textContent=r.xp+" XP";$("jProgress").value=r.xp%500;
+     const e=read(STORE)[day()]||{},plan=r.state.plans[day()];
+     $("jStatus").textContent=e.workout?"Work logged. The goblin approves.":e.restDay||e.recovery?"Recovery recorded. Your progress stays yours.":plan?"Today's choice: "+plan+". Ready when you are.":"Your next visit counts. Full, minimum, or recovery.";
+     if(celebrate&&r.added)feedback("Goblin approves","+"+r.added+" XP. Progress banked.");
+   }catch(e){$("jStatus").textContent="Progress could not be saved. Your existing logs have not been changed.";console.error(e)}
+ }
+ const lines=["Marine, the couch has made a compelling offer. Give the gym a counteroffer.","No epic comeback speech required. Choose a mission and get through the door.","The Dad Bod has home-field advantage. Let's play this one away.","You don't need last month's motivation. Just today's next step.","The goblin remembers your mile. That Marine is still in there."];
+ function open(){const e=read(STORE)[day()]||{};$("jPep").textContent=lines[Math.floor(Math.random()*lines.length)];$("jPlan").replaceChildren();$("jMissionState").textContent=e.workout?"You've already logged work today. No extra session required.":e.restDay||e.recovery?"Recovery is selected today. Rest is a valid mission.":"Choose before the drive home.";
+   $("jMedia").replaceChildren();
+   const clips=e.restDay||e.recovery?["sunday-recovery-goblin"]:["parking-lot-goblin","back-in-the-fight-goblin","future-you"];
+   const video=document.createElement("video");video.controls=true;video.playsInline=true;video.preload="none";video.src="morale_videos/"+clips[Math.floor(Math.random()*clips.length)]+".mp4";
+   const label=document.createElement("p");label.className="tiny";label.textContent="Optional goblin pep talk — tap Play for sound.";$("jMedia").append(label,video);
+   $("jMission").showModal();
+ }
+ function close(){$("jMedia").querySelector("video")?.pause();$("jMission").close()}
+ function choose(mode){
+   try{const s=state();s.plans[day()]=mode;write(s);
+     if(mode==="recovery"){
+       const d=read(STORE),k=day();d[k]={...(d[k]||{}),restDay:true,recovery:true};localStorage.setItem(STORE,JSON.stringify(d));
+       close();render(true);try{if(typeof update==="function")update()}catch(e){}return;
+     }
+     const root=$("jPlan");root.replaceChildren();const p=document.createElement("p");p.className="small";p.textContent=mode==="minimum"?"Two exercises, two working sets each. Actual weights and reps; no automatic increases.":"Choose today's session.";root.append(p);
+     const choices=mode==="minimum"?[["Push","A"],["Pull","B"]]:[["Run","run"],["Push","A"],["Pull","B"]];
+     for(const [name,code] of choices){const b=document.createElement("button");b.type="button";b.textContent=name;b.onclick=()=>{close();if(code==="run")MC2.run();else MC2.work(code,mode==="minimum")};root.append(b)}
+     render();
+   }catch(e){feedback("Could not save","Please try again.")}
+ }
+ function download(name,blob){const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),20000)}
+ function db(){return new Promise((resolve,reject)=>{const req=indexedDB.open("marine_progress_photos_v1",1);req.onupgradeneeded=()=>req.result.createObjectStore("photos",{keyPath:"id"});req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)})}
+ async function photos(action,value){const database=await db();try{return await new Promise((resolve,reject)=>{const tx=database.transaction("photos",action==="getAll"?"readonly":"readwrite"),store=tx.objectStore("photos"),req=action==="getAll"?store.getAll():store[action](value);let result;req.onsuccess=()=>result=req.result;tx.oncomplete=()=>resolve(result);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error)})}finally{database.close()}}
+ let photoURLs=[];
+ async function listPhotos(){
+   try{const all=(await photos("getAll")).sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id)),view=$("jPhotoView").value,matching=all.filter(p=>p.view===view);
+     for(const id of ["jBefore","jAfter"]){const select=$(id);select.replaceChildren();for(const p of matching){const option=document.createElement("option");option.value=p.id;option.textContent=p.date;select.append(option)}}
+     if(matching.length)$("jAfter").value=matching.at(-1).id;
+     $("jPhotoStatus").textContent=all.length?all.length+" photos saved on this device. Compare matching angles and lighting.":"No photos yet. Add a baseline when you're ready.";
+     await compare();
+   }catch(e){$("jPhotoStatus").textContent="Photo storage unavailable. Try opening in Safari with device storage available."}
+ }
+ async function compare(){
+   const all=await photos("getAll");photoURLs.forEach(URL.revokeObjectURL);photoURLs=[];
+   for(const [select,img,caption] of [["jBefore","jBeforeImg","jBeforeCaption"],["jAfter","jAfterImg","jAfterCaption"]]){
+     const p=all.find(x=>x.id===$(select).value);$(img).hidden=!p;$(caption).textContent=p?p.date+" · "+p.view:"No photo selected";
+     if(p){const url=URL.createObjectURL(p.blob);photoURLs.push(url);$(img).src=url}else $(img).removeAttribute("src");
+   }
+ }
+ async function addPhoto(){
+   const file=$("jPhotoFile").files[0];if(!file)return;
+   $("jPhotoStatus").textContent="Saving photo…";
+   try{
+     if(!file.type.startsWith("image/"))throw Error("Choose an image.");
+     const all=await photos("getAll");if(all.length>=60)throw Error("60-photo limit reached. Export a backup before removing older photos.");
+     const bitmap=await createImageBitmap(file),scale=Math.min(1,1400/Math.max(bitmap.width,bitmap.height)),canvas=document.createElement("canvas");canvas.width=Math.round(bitmap.width*scale);canvas.height=Math.round(bitmap.height*scale);canvas.getContext("2d").drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();
+     const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/jpeg",.85));if(!blob)throw Error("Image format could not be converted.");
+     const date=$("jPhotoDate").value;if(!/^\d{4}-\d{2}-\d{2}$/.test(date))throw Error("Choose a photo date.");
+     await photos("put",{id:crypto.randomUUID(),date,view:$("jPhotoView").value,blob});$("jPhotoFile").value="";await listPhotos();
+   }catch(e){$("jPhotoStatus").textContent=e.message||"Photo could not be saved."}
+ }
+ async function backup(){
+   try{const all=await photos("getAll"),encoded=await Promise.all(all.map(async p=>({...p,blob:await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(p.blob)})})));
+     download("Marine_Comeback_Journey_Backup.json",new Blob([JSON.stringify({version:"marine-journey-backup-v1",exportedAt:new Date().toISOString(),journey:state(),data:read(STORE),photos:encoded})],{type:"application/json"}));
+     $("jPhotoStatus").textContent="Backup prepared. Save the downloaded file somewhere safe; it includes private photos.";
+   }catch(e){$("jPhotoStatus").textContent="Backup failed. Please try again."}
+ }
+ async function restore(file){
+   if(!file)return;
+   try{const b=JSON.parse(await file.text());if(b.version!=="marine-journey-backup-v1"||!Array.isArray(b.photos)||!b.journey?.awards)throw Error("Choose a Journey backup.");
+     // Import only additive journey history and photo records; never replace workout logs.
+     const s=state();s.awards={...b.journey.awards,...s.awards};s.plans={...b.journey.plans,...s.plans};write(s);
+     for(const p of b.photos){if(typeof p.id!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(p.date)||!["front","side","back"].includes(p.view)||!/^data:image\/jpeg;base64,/.test(p.blob))throw Error("Invalid photo in backup.");const blob=await (await fetch(p.blob)).blob();await photos("put",{id:p.id,date:p.date,view:p.view,blob})}
+     render();await listPhotos();$("jPhotoStatus").textContent="Journey and photos imported. Existing workout logs kept.";
+   }catch(e){$("jPhotoStatus").textContent=e.message||"Import failed."}finally{$("jImport").value=""}
+ }
+ async function removePhoto(){
+   const id=$("jAfter").value;if(!id)return;
+   if(!confirm("Delete the selected After photo from this device? Save a backup first if you want to keep it."))return;
+   await photos("delete",id);await listPhotos();
+ }
+ function init(){
+   const root=document.createElement("div");root.id="mcJourney";root.innerHTML='<div class="jTop"><strong id="jRank">Your comeback</strong><span class="tiny" id="jXP">0 XP</span></div><progress id="jProgress" max="500" value="0" aria-label="Progress to next level"></progress><p id="jStatus" role="status"></p><button type="button" class="yellow" onclick="MarineJourney.open()">DEPLOY THE GOBLIN</button><details><summary>Your journey &amp; photo comparisons</summary><p class="tiny">100 XP per workout day · 60 for a minimum session · 50 comeback bonus after 7+ days away · 20 for recorded recovery. Once earned, XP stays. 500 XP per level. No points for opening the app.</p><p class="small">Private photos stay in this browser on this device. They do not sync. Export a backup before clearing browser data or changing phones.</p><label for="jPhotoView">Photo angle</label><select id="jPhotoView"><option value="front">Front</option><option value="side">Side</option><option value="back">Back</option></select><label for="jPhotoDate">Photo date</label><input id="jPhotoDate" type="date"><label for="jPhotoFile">Add a progress photo</label><input id="jPhotoFile" type="file" accept="image/*"><button type="button" class="secondary" onclick="MarineJourney.addPhoto()">Save photo</button><div class="row"><div><label for="jBefore">Before</label><select id="jBefore"></select></div><div><label for="jAfter">After</label><select id="jAfter"></select></div></div><div class="jCompare"><figure><img id="jBeforeImg" hidden alt="Earlier progress photo"><figcaption id="jBeforeCaption"></figcaption></figure><figure><img id="jAfterImg" hidden alt="Later progress photo"><figcaption id="jAfterCaption"></figcaption></figure></div><p id="jPhotoStatus" role="status"></p><button type="button" class="secondary" onclick="MarineJourney.backup()">Export journey &amp; photo backup</button><label for="jImport">Import journey &amp; photos (workout logs stay unchanged)</label><input id="jImport" type="file" accept=".json,application/json"><button type="button" class="secondary" onclick="MarineJourney.removePhoto()">Delete selected After photo</button></details><details><summary>Reminders &amp; recovery</summary><p class="small">The 3:55 p.m. weekday goblin reminder is delivered through ChatGPT. Enable ChatGPT notifications on your phone. It links to this briefing and cannot read these local workout logs.</p><p class="tiny">Marine Comeback does not currently send its own closed-app push notifications or block other iPhone apps. A reminder is an invitation; recovery is always available.</p></details>';
+   $("fitnessPhase2").append(root);$("jPhotoDate").value=day();$("jPhotoView").onchange=listPhotos;$("jBefore").onchange=compare;$("jAfter").onchange=compare;$("jImport").onchange=e=>restore(e.target.files[0]);
+   $("jMission").addEventListener("close",()=>$("jMedia").querySelector("video")?.pause());
+   render();listPhotos();
+   if(new URLSearchParams(location.search).get("mission")==="departure")open();
+   document.addEventListener("visibilitychange",()=>{if(!document.hidden)render()});
+   window.addEventListener("storage",()=>render());
+   setInterval(()=>render(true),15000);
+ }
+ document.addEventListener("DOMContentLoaded",init);
+ return{open,close,choose,render,reconcile,addPhoto,compare,backup,restore,removePhoto};
+})();
+</script>
+
 </body>
 </html>
