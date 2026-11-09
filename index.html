@@ -7530,6 +7530,7 @@ function run(){
 }
 function saveRun(r,date){
   const d=readLogs(),k=dk(date),e=d[k]||{};
+  if(r.nativeRunID&&Object.values(d).some(entry=>entry&&sessions(entry).some(saved=>saved.nativeRunID===r.nativeRunID)))return;
   recordRun(e,r);
   e.workout=true;e.workoutType="RUN";e.cardio=true;d[k]=e;
   S(d);
@@ -7601,7 +7602,69 @@ const rad=x=>x*Math.PI/180;
 const cues={"0":[0.0,0.46027],"1":[0.46027,0.48744],"2":[0.94771,0.37211],"3":[1.31982,0.49306],"4":[1.81288,0.42612],"5":[2.239,0.47302],"6":[2.71202,0.44],"7":[3.15202,0.52068],"8":[3.6727,0.34794],"9":[4.02063,0.49351],"10":[4.51415,0.44789],"11":[4.96204,0.68186],"12":[5.6439,0.66376],"13":[6.30766,0.57655],"14":[6.88422,0.67392],"15":[7.55814,0.6058],"16":[8.16395,0.7068],"17":[8.87075,0.79075],"18":[9.6615,0.60943],"19":[10.27093,0.74458],"20":[11.01551,0.5537],"21":[11.56921,0.75229],"22":[12.3215,0.83982],"23":[13.16132,0.87832],"24":[14.03964,0.779],"25":[14.81864,0.86349],"26":[15.68213,0.85324],"27":[16.53537,0.93533],"28":[17.4707,0.74689],"29":[18.2176,0.9142],"30":[19.13179,0.36812],"31":[19.49991,0.71955],"32":[20.21946,0.73342],"33":[20.95288,0.79057],"34":[21.74345,0.69179],"35":[22.43524,0.7712],"36":[23.20644,0.76327],"37":[23.96971,0.821],"38":[24.7907,0.6073],"39":[25.398,0.81787],"40":[26.21587,0.48463],"41":[26.7005,0.77565],"42":[27.47615,0.84385],"43":[28.32,0.90367],"44":[29.22367,0.80485],"45":[30.02853,0.89111],"46":[30.91964,0.87388],"47":[31.79351,0.92077],"48":[32.71429,0.76717],"49":[33.48145,0.93492],"50":[34.41637,0.48998],"51":[34.90635,0.76689],"52":[35.67324,0.83288],"53":[36.50612,0.8927],"54":[37.39882,0.79388],"55":[38.1927,0.88014],"56":[39.07283,0.86286],"57":[39.93569,0.90975],"58":[40.84544,0.82327],"59":[41.66871,0.92395],"mile":[42.59265,0.56218],"half":[43.15483,0.94567],"turn":[44.1005,0.98676],"split":[45.08726,0.83973],"total":[45.92698,0.92608],"average":[46.85306,0.93615],"hour":[47.78921,0.54517],"hours":[48.33438,0.57483],"minute":[48.90921,0.36921],"minutes":[49.27841,0.48925],"second":[49.76766,0.60943],"seconds":[50.3771,0.71986],"per":[51.09696,0.79333]};
 let watch=null,tick=null,wakeLock=null,run=null,pending=null,lastStatus="",lastSplit="";
 let audio=null,voiceBuffer=null,voiceLoad=null,playing=[];
-const busy=()=>!!(run?.active||pending);
+const nativeBridge=window.webkit?.messageHandlers?.marineRun;
+let nativeState=null,nativeOp=false,nativeReading=false,nativeRevision=0;
+const nativeRunning=()=>!!(nativeState&&nativeState.phase!=="idle");
+const busy=()=>nativeBridge?nativeOp||nativeRunning():!!(run?.active||pending);
+function draftKey(id){return "marine_native_run_note:"+id}
+function readDraft(id){
+  try{return localStorage.getItem(draftKey(id))||""}catch{return ""}
+}
+function writeDraft(id,notes){
+  try{localStorage.setItem(draftKey(id),notes)}catch{}
+}
+function showNative(state,seed){
+  const previousID=nativeState?.id,previousStatus=nativeState?.status;
+  nativeState=state;
+  if(!$("gpsPanel")&&nativeRunning()){MC2.run();return}
+  if(!$("gpsPanel"))return;
+  if(state.id&&state.id!==previousID){
+    $("gpsNotes").value=seed??readDraft(state.id);
+    if(seed!==undefined)writeDraft(state.id,seed);
+    $("gpsTurn").value=state.turn;
+    $("gpsVoice").checked=state.voice;
+  }
+  if(state.status!==previousStatus&&state.status)status(state.status);
+  ui();
+}
+async function pollNative(){
+  if(!nativeBridge||document.hidden||nativeReading||nativeOp)return;
+  const revision=nativeRevision;
+  nativeReading=true;
+  try{
+    const state=await nativeBridge.postMessage({action:"status"});
+    if(revision===nativeRevision)showNative(state);
+  }catch(error){console.warn(error)}
+  finally{nativeReading=false}
+}
+async function nativeCommand(action){
+  if(nativeOp)return;
+  nativeOp=true;nativeRevision++;ui();
+  try{
+    if(action==="start"){
+      const turn=$("gpsTurn").valueAsNumber;
+      const notes=$("gpsNotes").value;
+      const state=await nativeBridge.postMessage({action,turn:Number.isFinite(turn)?turn:0,voice:$("gpsVoice").checked});
+      showNative(state,notes);
+    }else{
+      const state=await nativeBridge.postMessage({action});
+      showNative(state);
+      if(state.record){
+        const record={...state.record,notes:$("gpsNotes").value.trim()};
+        MC2.saveRun(record,new Date(record.completedAt));
+        const saved=await nativeBridge.postMessage({action:"saved",id:record.nativeRunID});
+        try{localStorage.removeItem(draftKey(record.nativeRunID))}catch{}
+        showNative(saved);
+        savedUI(record);
+      }
+    }
+  }catch(error){
+    console.error(error);
+    status(action==="finish"?"Save could not finish. Tap Finish & Save to retry.":"Could not start GPS. Try again.");
+  }finally{
+    nativeOp=false;ui();
+  }
+}
 function dist(a,b){
   const dlat=rad(b.latitude-a.latitude),dlon=rad(b.longitude-a.longitude);
   const q=Math.sin(dlat/2)**2+Math.cos(rad(a.latitude))*Math.cos(rad(b.latitude))*Math.sin(dlon/2)**2;
@@ -7672,14 +7735,15 @@ function status(message){
 }
 function ui(){
   if(!$("gpsPanel"))return;
-  const mi=(run?.meters||0)/MILE,t=elapsed();
+  const mi=((nativeBridge?nativeState?.meters:run?.meters)||0)/MILE;
+  const t=nativeBridge?(nativeState?.seconds||0):elapsed();
   $("gpsStart").disabled=busy();$("gpsTurn").disabled=busy();
-  $("gpsFinish").disabled=!busy();
+  $("gpsFinish").disabled=nativeBridge?(nativeOp||!nativeRunning()):!busy();
   document.querySelector("#mc2O .mc2x").disabled=busy();
   $("gpsDistance").textContent=mi.toFixed(2)+" mi";
   $("gpsTime").textContent=fmt(t);
   $("gpsPace").textContent=mi>.015?fmt(t/mi)+"/mi":"—";
-  $("gpsSplit").textContent=lastSplit;
+  $("gpsSplit").textContent=nativeBridge?(nativeState?.split||""):lastSplit;
 }
 async function keepAwake(session){
   if(!navigator.wakeLock||document.hidden||wakeLock||session.wakePending)return;
@@ -7705,6 +7769,7 @@ function interrupt(){
   stopCue();
 }
 document.addEventListener("visibilitychange",()=>{
+  if(nativeBridge){pollNative();return}
   if(!run?.active)return;
   if(document.hidden){interrupt();return}
   run.visibleSince=Date.now();
@@ -7754,6 +7819,7 @@ function got(p){
 }
 function begin(){
   if(busy())return;
+  if(nativeBridge){nativeCommand("start");return}
   if(!navigator.geolocation){status("GPS unavailable on this device.");return}
   const turn=$("gpsTurn").valueAsNumber;
   const session={active:true,start:null,seconds:0,meters:0,anchor:null,lastFix:null,splits:[],track:[],turn,interrupted:false,visibleSince:0};
@@ -7787,6 +7853,7 @@ function stopTracking(){
   $("gpsHint").textContent="Keep this screen open and awake for GPS.";
 }
 function finish(){
+  if(nativeBridge){nativeCommand("finish");return}
   if(run?.active){
     stopTracking();
     const mi=run.meters/MILE;
@@ -7805,7 +7872,11 @@ function finish(){
   try{MC2.saveRun(record,date)}catch(error){
     console.error(error);status("Save failed. Tap Finish & Save to retry.");ui();return;
   }
-  pending=null;$("gpsNotes").value="";
+  pending=null;
+  savedUI(record);
+}
+function savedUI(record){
+  $("gpsNotes").value="";
   const message="Run saved: "+record.distance.toFixed(2)+" mi in "+record.time+(record.gpsInterrupted?". GPS interrupted.":".");
   status(message);ui();refreshHistory();
   MC2.refreshRunStats();
@@ -7850,7 +7921,21 @@ function mount(){
     </details>
   </div>`);
   $("gpsStart").onclick=begin;$("gpsFinish").onclick=finish;
-  $("gpsVoice").onchange=()=>{if($("gpsVoice").checked&&run?.active)prepareVoice();else stopCue()};
+  $("gpsVoice").onchange=()=>{
+    if(nativeBridge){
+      if(nativeRunning())nativeBridge.postMessage({action:"voice",enabled:$("gpsVoice").checked}).catch(error=>console.warn(error));
+    }else if($("gpsVoice").checked&&run?.active)prepareVoice();
+    else stopCue();
+  };
+  if(nativeBridge){
+    $("gpsHint").textContent="Wait for GPS tracking before locking your iPhone.";
+    if(nativeState?.id){
+      $("gpsNotes").value=readDraft(nativeState.id);
+      $("gpsTurn").value=nativeState.turn;
+      $("gpsVoice").checked=nativeState.voice;
+    }
+    $("gpsNotes").oninput=()=>{if(nativeState?.id)writeDraft(nativeState.id,$("gpsNotes").value)};
+  }
   $("gpsSavedRun").onchange=showSavedNotes;
   $("gpsSaveNotes").onclick=()=>{
     const selected=history[$("gpsSavedRun").value];
@@ -7859,9 +7944,14 @@ function mount(){
     try{MC2.saveRunNotes(selected,notes);selected.run={...selected.run,notes};$("gpsNotesStatus").textContent="Notes saved."}
     catch(error){console.error(error);$("gpsNotesStatus").textContent="Notes could not be saved. Reopen the run log and try again."}
   };
-  refreshHistory();ui();status(lastStatus);
+  refreshHistory();ui();status(nativeState?.status||lastStatus);
 }
 window.MarineGPS={mount,busy};
+if(nativeBridge){
+  document.addEventListener("DOMContentLoaded",pollNative);
+  window.addEventListener("pageshow",pollNative);
+  setInterval(pollNative,1000);
+}
 })();
 </script>
 
