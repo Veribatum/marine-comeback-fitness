@@ -1,0 +1,16 @@
+name: Verify iOS target
+on:
+  push:
+    branches: [ios-locked-run]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Compile the unsigned iOS target
+        run: xcodebuild -project ios/MarineComeback.xcodeproj -target MarineComeback -sdk iphoneos CODE_SIGNING_ALLOWED=NO build
