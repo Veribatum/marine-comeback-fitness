@@ -1,10 +1,9 @@
-const CACHE_NAME="marine-comeback-journey-v1";
+const CACHE_NAME="marine-comeback-run-v2";
 const APP_URL=new URL("./index.html",self.registration.scope).href;
+const CUES_URL=new URL("./run-cues.mp3",self.registration.scope).href;
 self.addEventListener("install",event=>{
   event.waitUntil(caches.open(CACHE_NAME).then(async cache=>{
-    const response=await fetch(APP_URL,{cache:"reload"});
-    if(!response.ok)throw new Error("App could not be cached");
-    await cache.put(APP_URL,response);
+    await cache.addAll([APP_URL,CUES_URL].map(url=>new Request(url,{cache:"reload"})));
     await self.skipWaiting();
   }));
 });
@@ -18,6 +17,10 @@ self.addEventListener("activate",event=>{
 self.addEventListener("fetch",event=>{
   const url=new URL(event.request.url);
   if(url.origin!==self.location.origin||event.request.method!=="GET")return;
+  if(url.href===CUES_URL){
+    event.respondWith(caches.open(CACHE_NAME).then(async cache=>await cache.match(CUES_URL)||fetch(event.request)));
+    return;
+  }
   if(event.request.mode==="navigate"){
     event.respondWith((async()=>{
       const cache=await caches.open(CACHE_NAME);

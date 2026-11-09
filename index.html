@@ -7468,12 +7468,18 @@ setTimeout(wireButtons, 1500);
 window.MC2=(function(){
 const K="marine_data_v5",P={
 A:{n:"WORKOUT A — PUSH",e:[["Chest Press",3,"8–12"],["Incline Chest Press",3,"8–12"],["Shoulder Press",3,"8–12"],["Lateral Raise",3,"12–15"],["Triceps Pressdown",3,"10–15"],["Overhead Triceps Extension",3,"10–15"]]},
-B:{n:"WORKOUT B — PULL",e:[["Lat Pulldown",3,"8–12"],["Seated Cable Row",3,"8–12"],["Rear-Delt Fly / Reverse Pec Deck",3,"12–15"],["Cable or Machine Curl",3,"10–15"],["Hammer Curl",3,"10–15"],["Preacher Curl",2,"10–15"]]}};let W=null,minimum=false;
-const D=()=>{try{return JSON.parse(localStorage.getItem(K)||"{}")}catch(e){return{}}},S=d=>localStorage.setItem(K,JSON.stringify(d));
+B:{n:"WORKOUT B — PULL",e:[["Lat Pulldown",3,"8–12"],["Seated Cable Row",3,"8–12"],["Rear-Delt Fly / Reverse Pec Deck",3,"12–15"],["Cable or Machine Curl",3,"10–15"],["Hammer Curl",3,"10–15"],["Preacher Curl",2,"10–15"]]}};let W=null;
+function readLogs(){
+  const logs=JSON.parse(localStorage.getItem(K)??localStorage.getItem("marine_data_v4")??JSON.stringify(migrateOldData()));
+  if(!logs||typeof logs!=="object"||Array.isArray(logs))throw new Error("Invalid workout logs");
+  return logs;
+}
+const D=()=>{try{return readLogs()}catch(e){return{}}},S=d=>localStorage.setItem(K,JSON.stringify(d));
 const dk=(d=new Date())=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 const c=()=>document.getElementById("mc2C"),o=()=>document.getElementById("mc2O");
 function head(t,s){document.getElementById("mc2T").textContent=t;document.getElementById("mc2S").textContent=s||"App remembers. Coach decides."}
-function show(){o().classList.add("on")} function close(){o().classList.remove("on");W=null}
+function show(){o().classList.add("on")}
+function close(){if(window.MarineGPS?.busy())return;o().classList.remove("on");W=null}
 function note(a,b){try{if(typeof mcToast==="function")mcToast(a,b);else alert(a+": "+b)}catch(e){}}
 function sec(v){let a=String(v||"").trim().split(":").map(Number);if(![2,3].includes(a.length)||a.some(x=>!Number.isFinite(x)||x<0))return 0;if(a.length===2&&a[1]>=60||a.length===3&&(a[1]>=60||a[2]>=60))return 0;return a.length===2?a[0]*60+a[1]:a[0]*3600+a[1]*60+a[2]}
 function ft(x){x=Math.round(x);let h=Math.floor(x/3600),m=Math.floor(x%3600/60),s=x%60;return(h?String(h).padStart(2,"0")+":":"")+String(m).padStart(h?2:1,"0")+":"+String(s).padStart(2,"0")}
@@ -7500,9 +7506,9 @@ function runStats(now=new Date()){
       if(key>=monthStart)month+=distance;
       if(key<weekStart)continue;
       week+=distance;
-      let times=Array.isArray(r.mileSplits)?r.mileSplits.map(x=>Number(x.seconds)):[];
+      let times=Array.isArray(r.mileSplits)?r.mileSplits.filter(x=>!x.estimated).map(x=>Number(x.seconds)):[];
       // Legacy exact-one-mile runs are usable; longer-run average pace is not a mile split.
-      if(!times.length&&Math.abs(distance-1)<1e-9)times=[Number(r.timeSeconds)||sec(r.time)];
+      if(!r.gpsInterrupted&&!times.length&&Math.abs(distance-1)<1e-9)times=[Number(r.timeSeconds)||sec(r.time)];
       for(const time of times)if(Number.isFinite(time)&&time>0&&(best===null||time<best))best=time;
     }
   }
@@ -7515,81 +7521,350 @@ function wm(){
     const e=document.getElementById(id);if(e)e.textContent=value;
   }
 }
-function home(){head("FITNESS","Choose today's mission.");c().innerHTML='<div class="mc2grid"><button class="yellow" onclick="MC2.run()">RUN</button><button onclick="MC2.gym()">GYM DAY</button></div>';show()}
-function run(){head("RUN","Live GPS tracking and spoken updates.");c().innerHTML="";show();if(window.MarineGPS)window.MarineGPS.mount();else c().textContent="GPS tracker unavailable. Refresh the page.";}
-function pace(){let d=+rD.value,s=sec(rT.value);rP.textContent=d>0&&s?ft(s/d)+"/mi":"—"}
-function saveRun(){let di=+rD.value,se=sec(rT.value);if(!(di>0)||!se){note("Run","Enter valid distance and time.");return}let d=D(),k=dk(),e=d[k]||{};recordRun(e,{distance:+di.toFixed(2),time:ft(se),timeSeconds:se,pace:ft(se/di)+"/mi",notes:rN.value.trim(),completedAt:new Date().toISOString()});e.workout=true;e.workoutType="RUN";e.cardio=true;e.notes=e.runSession.notes||"Run completed.";d[k]=e;S(d);wm();close();note("Run Logged",di.toFixed(2)+" mi • "+e.runSession.pace)}
+function home(){if(window.MarineGPS?.busy())return;head("FITNESS","Choose today's mission.");c().innerHTML='<div class="mc2grid"><button class="yellow" onclick="MC2.run()">RUN</button><button onclick="MC2.gym()">GYM DAY</button></div>';show()}
+function run(){
+  show();
+  if(c().querySelector("#gpsPanel"))return;
+  head("RUN","");c().textContent="";
+  if(window.MarineGPS)MarineGPS.mount();else c().textContent="GPS tracker unavailable. Refresh the page.";
+}
+function saveRun(r,date){
+  const d=readLogs(),k=dk(date),e=d[k]||{};
+  recordRun(e,r);
+  e.workout=true;e.workoutType="RUN";e.cardio=true;d[k]=e;
+  S(d);
+}
+function recentRuns(){
+  return Object.entries(D()).filter(([key,e])=>e&&/^\d{4}-\d{2}-\d{2}$/.test(key))
+    .sort(([a],[b])=>b.localeCompare(a))
+    .flatMap(([key,e])=>sessions(e).map((run,index)=>({key,index,run})).reverse());
+}
+function saveRunNotes({key,index,run},notes){
+  const d=readLogs(),e=d[key],runs=e?sessions(e):[],current=runs[index];
+  if(!current||current.completedAt!==run.completedAt||current.distance!==run.distance||current.time!==run.time)
+    throw new Error("Run changed. Reopen the run log and try again.");
+  const updated={...current,notes};
+  runs[index]=updated;e.runSessions=runs;
+  if(index===runs.length-1)e.runSession=updated;
+  S(d);
+}
 function last(n){let d=D(),ks=Object.keys(d).sort().reverse();for(let k of ks){let g=d[k]&&d[k].gymSession,x=g&&g.exercises&&g.exercises.find(v=>v.name===n);if(x)return x}return null}
-function gym(){head("GYM DAY","Choose Push or Pull.");c().innerHTML='<div class="mc2grid"><button class="yellow" onclick="MC2.work(\'A\')">WORKOUT A — PUSH</button><button onclick="MC2.work(\'B\')">WORKOUT B — PULL</button></div>';show()}
-function program(){const p=P[W];return minimum?{n:p.n+" — MINIMUM",e:p.e.slice(0,2).map(v=>[v[0],2,v[2]])}:p}
-function work(k,short=false){W=k;minimum=short;let p=program();head(p.n,"Enter actual weight and reps for every working set.");let x='<div class="mc2grid"><div class="mc2opt"><label>Warm-up <span class="small">5 min • 2.5 • incline 15</span><input id="wU" type="checkbox" checked></label></div><div class="mc2opt"><label>Cooldown / Stretch<input id="cD" type="checkbox"></label></div><div class="mc2opt"><label>Red-light therapy<input id="rL" type="checkbox"></label></div><div class="mc2opt"><label>Massage chair<input id="mC" type="checkbox"></label></div></div>';
-p.e.forEach((v,i)=>{let q=last(v[0]),pv=q?q.sets.map(s=>s.weight+"×"+s.reps).join(" | "):"No previous session";x+='<div class="mc2ex"><h3>'+v[0]+'</h3><div class="small">Target: '+v[1]+' × '+v[2]+'</div><div class="mc2prev">Previous: '+pv+'</div>';for(let j=0;j<v[1];j++){let wt=q&&q.sets[j]?q.sets[j].weight:"";x+='<div class="mc2set"><b>Set '+(j+1)+'</b><input class="mw" data-e="'+i+'" data-s="'+j+'" type="number" min="0" step=".5" placeholder="Weight" value="'+wt+'"><input class="mr" data-e="'+i+'" data-s="'+j+'" type="number" min="0" step="1" placeholder="Reps"></div>'}x+='</div>'});c().innerHTML=x+'<button class="yellow" onclick="MC2.done()">COMPLETE WORKOUT</button>'}
-function done(){let p=program(),bad=false,ex=p.e.map((v,i)=>({name:v[0],target:v[2],sets:Array.from({length:v[1]},(_,j)=>{let a=document.querySelector('.mw[data-e="'+i+'"][data-s="'+j+'"]').value,b=document.querySelector('.mr[data-e="'+i+'"][data-s="'+j+'"]').value;if(a===""||b==="")bad=true;return{weight:+a,reps:+b}})}));if(bad){note("Gym Day","Enter weight and reps for every set.");return}let d=D(),k=dk(),e=d[k]||{};e.gymSession={workout:W,minimum,name:p.n,warmup:wU.checked,cooldown:cD.checked,redLight:rL.checked,massageChair:mC.checked,exercises:ex,completedAt:new Date().toISOString()};e.workout=true;e.workoutType="GYM DAY — WORKOUT "+W;e.cardio=wU.checked;e.redLight=rL.checked;e.massageChair=mC.checked;e.massageChairSkipped=!mC.checked;e.notes=p.n+" completed.";d[k]=e;S(d);if(window.MarineJourney)MarineJourney.render(true);try{if(typeof update==="function")update()}catch(z){}close();note("Workout Logged",p.n+" saved.")}
-function exportText(){let e=D()[dk()]||{},x="";if(e.runSession){let r=e.runSession;x+="\n\nRUN\nDistance: "+(+r.distance).toFixed(2)+" mi\nTime: "+r.time+"\nAverage Pace: "+r.pace+"\nNotes: "+(r.notes||"None")+"\nWeekly Running Miles: "+miles().toFixed(2)+" mi"+"\nBest Mile This Week: "+(runStats().best===null?"Not recorded":ft(runStats().best))+"\nMonthly Running Miles: "+runStats().month.toFixed(2)+" mi"+"\nTotal Running Miles: "+runStats().total.toFixed(2)+" mi"}if(e.gymSession){let g=e.gymSession;x+="\n\nGYM DAY — WORKOUT "+g.workout+"\nSession: "+(g.minimum?"Minimum":"Full")+"\nWarm-up (5 min, speed 2.5, incline 15): "+(g.warmup?"YES":"NO")+"\nCooldown / Stretch: "+(g.cooldown?"YES":"NO")+"\nRed-light therapy: "+(g.redLight?"YES":"NO")+"\nMassage chair: "+(g.massageChair?"YES":"NO");g.exercises.forEach(v=>x+="\n"+v.name+": "+v.sets.map(s=>s.weight+"×"+s.reps).join(" | "))}return x}
+function gym(){if(window.MarineGPS?.busy())return;head("GYM DAY","Choose Push or Pull.");c().innerHTML='<div class="mc2grid"><button class="yellow" onclick="MC2.work(\'A\')">WORKOUT A — PUSH</button><button onclick="MC2.work(\'B\')">WORKOUT B — PULL</button></div>';show()}
+function work(k){if(window.MarineGPS?.busy())return;W=k;let p=P[W];head(p.n,"Log the sets you did. Leave the rest blank.");let x='<div class="mc2grid"><div class="mc2opt"><label>Warm-up <span class="small">5 min • 2.5 • incline 15</span><input id="wU" type="checkbox" checked></label></div><div class="mc2opt"><label>Cooldown / Stretch<input id="cD" type="checkbox"></label></div><div class="mc2opt"><label>Red-light therapy<input id="rL" type="checkbox"></label></div><div class="mc2opt"><label>Massage chair<input id="mC" type="checkbox"></label></div></div>';
+p.e.forEach((v,i)=>{let q=last(v[0]),pv=q?q.sets.map(s=>s.weight+"×"+s.reps).join(" | "):"No previous session";x+='<div class="mc2ex"><h3>'+v[0]+'</h3><div class="small">Target: '+v[1]+' × '+v[2]+'</div><div class="mc2prev">Previous: '+pv+'</div>';for(let j=0;j<v[1];j++){let wt=q?.sets.find((set,index)=>(set.set??index+1)===j+1)?.weight??"";x+='<div class="mc2set"><b>Set '+(j+1)+'</b><input class="mw" data-e="'+i+'" data-s="'+j+'" type="number" min="0" step=".5" placeholder="Weight" value="'+wt+'"><input class="mr" data-e="'+i+'" data-s="'+j+'" type="number" min="0" step="1" placeholder="Reps"></div>'}x+='</div>'});c().innerHTML=x+'<button class="yellow" onclick="MC2.done()">SAVE WORKOUT</button>'}
+function done(){
+  const p=P[W];if(!p)return;
+  const exercises=[];
+  let count=0;
+  for(const [i,[name,targetSets,target]] of p.e.entries()){
+    const sets=[];
+    for(let j=0;j<targetSets;j++){
+      const weight=c().querySelector('.mw[data-e="'+i+'"][data-s="'+j+'"]');
+      const reps=c().querySelector('.mr[data-e="'+i+'"][data-s="'+j+'"]');
+      if(!weight.validity.badInput&&!reps.validity.badInput&&reps.value===""&&weight.value===weight.defaultValue)continue;
+      if(!Number.isFinite(weight.valueAsNumber)||weight.valueAsNumber<0||!Number.isInteger(reps.valueAsNumber)||reps.valueAsNumber<1){
+        note("Gym Day",name+" set "+(j+1)+": enter weight and reps, or leave the set blank.");
+        return;
+      }
+      sets.push({set:j+1,weight:weight.valueAsNumber,reps:reps.valueAsNumber});count++;
+    }
+    if(sets.length)exercises.push({name,target,sets});
+  }
+  if(!count){note("Gym Day","Enter at least one completed set.");return}
+  const partial=count<p.e.reduce((sum,exercise)=>sum+exercise[1],0);
+  try{
+    const d=readLogs(),k=dk(),e=d[k]||{};
+    const checked=id=>document.getElementById(id).checked;
+    const warmup=checked("wU"),cooldown=checked("cD"),redLight=checked("rL"),massageChair=checked("mC");
+    e.gymSession={workout:W,partial,name:p.n,warmup,cooldown,redLight,massageChair,exercises,completedAt:new Date().toISOString()};
+    e.workout=true;e.workoutType="GYM DAY — WORKOUT "+W;e.cardio=warmup;e.redLight=redLight;e.massageChair=massageChair;e.massageChairSkipped=!massageChair;
+    e.notes=p.n+" logged.";d[k]=e;S(d);
+  }catch(error){console.error(error);note("Gym Day","Save failed. Your entries are still on screen.");return}
+  if(window.MarineJourney)MarineJourney.render(true);
+  try{if(typeof update==="function")update()}catch(error){console.error(error)}
+  close();note("Workout Logged",p.n+" saved.");
+}
+function exportText(){let e=D()[dk()]||{},x="";if(e.runSession){let r=e.runSession;x+="\n\nRUN\nDistance: "+(+r.distance).toFixed(2)+" mi\nTime: "+r.time+"\nAverage Pace: "+r.pace+"\nNotes: "+(r.notes||"None")+"\nWeekly Running Miles: "+miles().toFixed(2)+" mi"+"\nBest Mile This Week: "+(runStats().best===null?"Not recorded":ft(runStats().best))+"\nMonthly Running Miles: "+runStats().month.toFixed(2)+" mi"+"\nTotal Running Miles: "+runStats().total.toFixed(2)+" mi"}if(e.gymSession){let g=e.gymSession;x+="\n\nGYM DAY — WORKOUT "+g.workout+"\nSession: "+(g.minimum?"Minimum":g.partial?"Partial":"Full")+"\nWarm-up (5 min, speed 2.5, incline 15): "+(g.warmup?"YES":"NO")+"\nCooldown / Stretch: "+(g.cooldown?"YES":"NO")+"\nRed-light therapy: "+(g.redLight?"YES":"NO")+"\nMassage chair: "+(g.massageChair?"YES":"NO");g.exercises.forEach(v=>x+="\n"+v.name+": "+v.sets.map(s=>s.weight+"×"+s.reps).join(" | "))}return x}
 function patch(){if(typeof window.generateSummary!=="function"||window.generateSummary.__mc2)return;let old=window.generateSummary;window.generateSummary=function(){let z=old.apply(this,arguments),b=document.getElementById("summaryBox");if(b){let base=String(b.value||z||"").replace(/\n\nRUN\n[\s\S]*?(?=\n\nGYM DAY — WORKOUT|$)/,"").replace(/\n\nGYM DAY — WORKOUT [AB]\n[\s\S]*$/,"");b.value=base.trim()+exportText();return b.value}return z};window.generateSummary.__mc2=true}
-document.addEventListener("DOMContentLoaded",()=>{wm();setTimeout(patch,200);setTimeout(patch,1500);o().addEventListener("click",e=>{if(e.target===o()&&!window.MarineGPS?.active())close()})});
+document.addEventListener("DOMContentLoaded",()=>{wm();setTimeout(patch,200);setTimeout(patch,1500);o().addEventListener("click",e=>{if(e.target===o())close()})});
 window.addEventListener("pageshow",wm);window.addEventListener("focus",wm);window.addEventListener("storage",wm);document.addEventListener("visibilitychange",()=>{if(!document.hidden)wm()});
-return{home,run,saveRun,gym,work,done,close,refreshRunStats:wm,runStats,recordRun};
+return{home,run,saveRun,saveRunNotes,recentRuns,gym,work,done,close,refreshRunStats:wm,runStats,recordRun};
 })();
 </script>
 <style>
-#gpsPanel{background:#101810;border:1px solid #bba55b;border-radius:14px;padding:14px;margin-top:12px}#gpsPanel .gpsMetric{font-size:1.7rem;font-weight:800;color:#e8cf6b}#gpsPanel .gpsGrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}#gpsPanel button{margin-top:8px}#gpsPanel .gpsStatus{font-size:.85rem;opacity:.85}
+#gpsPanel{background:#101810;border:1px solid #bba55b;border-radius:14px;padding:14px;margin-top:12px}#gpsPanel .gpsMetric{font-size:1.7rem;font-weight:800;color:#e8cf6b}#gpsPanel .gpsGrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}#gpsPanel button{margin-top:8px}#gpsPanel .gpsStatus{font-size:.85rem;opacity:.85}#gpsPanel .gpsStatus:empty{display:none}#gpsPanel .gpsVoice{display:flex;align-items:center;gap:8px;margin:8px 0}#gpsPanel #gpsVoice{width:20px;height:20px;margin:0}#gpsPanel #gpsHistory{margin-top:12px}#gpsPanel summary{cursor:pointer;color:var(--gold)}
 </style>
 <script id="marine-gps-v1">
 (function(){
-let watch=null,start=0,paused=0,finishedSeconds=0,points=[],meters=0,lastVoice=0,turnCalled=false,tick=null,active=false,saved=false,lastStatus="",mileSplits=[],lastMileSeconds=0;
-const R=6371000,rad=x=>x*Math.PI/180;
-function dist(a,b){let dlat=rad(b.latitude-a.latitude),dlon=rad(b.longitude-a.longitude),q=Math.sin(dlat/2)**2+Math.cos(rad(a.latitude))*Math.cos(rad(b.latitude))*Math.sin(dlon/2)**2;return 2*R*Math.atan2(Math.sqrt(q),Math.sqrt(1-q))}
-function elapsed(){return active?Math.max(0,Math.floor((Date.now()-start-paused)/1000)):finishedSeconds}
-function fmt(t){t=Math.max(0,Math.round(t));return Math.floor(t/3600)?[Math.floor(t/3600),Math.floor(t%3600/60),t%60].map(v=>String(v).padStart(2,"0")).join(":"):[Math.floor(t/60),t%60].map((v,i)=>String(v).padStart(i?2:1,"0")).join(":")}
-function speak(s){if(!document.getElementById("gpsVoice")?.checked||!('speechSynthesis' in window))return;try{speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(s))}catch(e){}}
-function ui(){let p=document.getElementById("gpsPanel");if(!p)return;let mi=meters/1609.344,t=elapsed();p.querySelector("#gpsStart").disabled=active;p.querySelector("#gpsFinish").disabled=saved||(!active&&!start);p.querySelector("#gpsDistance").textContent=mi.toFixed(2)+" mi";p.querySelector("#gpsTime").textContent=fmt(t);p.querySelector("#gpsPace").textContent=mi>.015?fmt(t/mi)+"/mi":"—"}
-function status(s){lastStatus=s;let n=document.getElementById("gpsStatus");if(n)n.textContent=s}
-function announceMile(mile,seconds,total){const split=fmt(seconds),overall=fmt(total/mile),message="Mile "+mile+". Mile pace "+split+" per mile. Total time "+fmt(total)+". Overall average pace "+overall+" per mile.";status(message);speak(message)}
-function got(p){if(!active)return;let q={latitude:p.coords.latitude,longitude:p.coords.longitude,accuracy:p.coords.accuracy,time:p.timestamp};if(q.accuracy>40){status("GPS accuracy poor ("+Math.round(q.accuracy)+" m). Waiting for stronger signal.");return}let last=points.at(-1);if(last){let d=dist(last,q),dt=(q.time-last.time)/1000;if(dt<=0||d<3||d/dt>8)return;const previousMeters=meters;meters+=d;
-let nextMile=mileSplits.length+1;
-while(nextMile*1609.344<=meters){
-  const fraction=(nextMile*1609.344-previousMeters)/d;
-  const crossingSeconds=Math.max(0,(last.time+fraction*(q.time-last.time)-start)/1000);
-  mileSplits.push({mile:nextMile,seconds:crossingSeconds-lastMileSeconds,totalSeconds:crossingSeconds});announceMile(nextMile,crossingSeconds-lastMileSeconds,crossingSeconds);
-  lastMileSeconds=crossingSeconds;nextMile++;
-}}points.push(q);status("GPS active • accuracy "+Math.round(q.accuracy)+" m");let mi=meters/1609.344;if(Math.floor(mi)>lastVoice)lastVoice=Math.floor(mi);let half=Number(document.getElementById("gpsTurn")?.value||1);if(half>0&&!turnCalled&&mi>=half){turnCalled=true;if(Math.abs(half-Math.round(half))>.001)speak("Turn around now. You have reached your turnaround distance.")}ui()}
-function begin(){if(active)return;if(!navigator.geolocation){status("GPS unavailable on this device.");return}points=[];meters=0;mileSplits=[];lastMileSeconds=0;lastVoice=0;turnCalled=false;paused=0;finishedSeconds=0;saved=false;start=Date.now();active=true;document.getElementById("gpsStart").disabled=true;document.getElementById("gpsFinish").disabled=false;status("Requesting GPS permission… Keep this page open and screen awake.");watch=navigator.geolocation.watchPosition(got,e=>status("GPS error: "+e.message),{enableHighAccuracy:true,maximumAge:0,timeout:20000});tick=setInterval(ui,1000);speak("Run started.");ui()}
-function finish(){
-  if(saved||(!active&&!start))return;
-  if(active){finishedSeconds=elapsed();active=false;}
-  if(watch!==null)navigator.geolocation.clearWatch(watch);
-  watch=null;clearInterval(tick);tick=null;ui();
-  const seconds=finishedSeconds,mi=meters/1609.344;
-  if(!(mi>0)){
-    status("Tracking stopped. No GPS distance recorded, so no run was saved. Check location permission and try again.");
+const MILE=1609.344, MAX_GAP=20000, $=id=>document.getElementById(id);
+const rad=x=>x*Math.PI/180;
+const cues={"0":[0.0,0.46027],"1":[0.46027,0.48744],"2":[0.94771,0.37211],"3":[1.31982,0.49306],"4":[1.81288,0.42612],"5":[2.239,0.47302],"6":[2.71202,0.44],"7":[3.15202,0.52068],"8":[3.6727,0.34794],"9":[4.02063,0.49351],"10":[4.51415,0.44789],"11":[4.96204,0.68186],"12":[5.6439,0.66376],"13":[6.30766,0.57655],"14":[6.88422,0.67392],"15":[7.55814,0.6058],"16":[8.16395,0.7068],"17":[8.87075,0.79075],"18":[9.6615,0.60943],"19":[10.27093,0.74458],"20":[11.01551,0.5537],"21":[11.56921,0.75229],"22":[12.3215,0.83982],"23":[13.16132,0.87832],"24":[14.03964,0.779],"25":[14.81864,0.86349],"26":[15.68213,0.85324],"27":[16.53537,0.93533],"28":[17.4707,0.74689],"29":[18.2176,0.9142],"30":[19.13179,0.36812],"31":[19.49991,0.71955],"32":[20.21946,0.73342],"33":[20.95288,0.79057],"34":[21.74345,0.69179],"35":[22.43524,0.7712],"36":[23.20644,0.76327],"37":[23.96971,0.821],"38":[24.7907,0.6073],"39":[25.398,0.81787],"40":[26.21587,0.48463],"41":[26.7005,0.77565],"42":[27.47615,0.84385],"43":[28.32,0.90367],"44":[29.22367,0.80485],"45":[30.02853,0.89111],"46":[30.91964,0.87388],"47":[31.79351,0.92077],"48":[32.71429,0.76717],"49":[33.48145,0.93492],"50":[34.41637,0.48998],"51":[34.90635,0.76689],"52":[35.67324,0.83288],"53":[36.50612,0.8927],"54":[37.39882,0.79388],"55":[38.1927,0.88014],"56":[39.07283,0.86286],"57":[39.93569,0.90975],"58":[40.84544,0.82327],"59":[41.66871,0.92395],"mile":[42.59265,0.56218],"half":[43.15483,0.94567],"turn":[44.1005,0.98676],"split":[45.08726,0.83973],"total":[45.92698,0.92608],"average":[46.85306,0.93615],"hour":[47.78921,0.54517],"hours":[48.33438,0.57483],"minute":[48.90921,0.36921],"minutes":[49.27841,0.48925],"second":[49.76766,0.60943],"seconds":[50.3771,0.71986],"per":[51.09696,0.79333]};
+let watch=null,tick=null,wakeLock=null,run=null,pending=null,lastStatus="",lastSplit="";
+let audio=null,voiceBuffer=null,voiceLoad=null,playing=[];
+const busy=()=>!!(run?.active||pending);
+function dist(a,b){
+  const dlat=rad(b.latitude-a.latitude),dlon=rad(b.longitude-a.longitude);
+  const q=Math.sin(dlat/2)**2+Math.cos(rad(a.latitude))*Math.cos(rad(b.latitude))*Math.sin(dlon/2)**2;
+  return 12742000*Math.asin(Math.sqrt(Math.min(1,q)));
+}
+function elapsed(){
+  if(!run)return 0;
+  return run.active?(run.start===null?0:Math.max(0,Math.floor((Date.now()-run.start)/1000))):run.seconds;
+}
+function fmt(t){
+  t=Math.max(0,Math.round(t));
+  const hours=Math.floor(t/3600),minutes=Math.floor(t%3600/60),seconds=String(t%60).padStart(2,"0");
+  return hours?hours+":"+String(minutes).padStart(2,"0")+":"+seconds:minutes+":"+seconds;
+}
+function spokenNumber(value){return value<60?[String(value)]:String(value).split("")}
+function spokenTime(t){
+  const seconds=Math.round(t),parts=[];
+  for(const [value,unit] of [[Math.floor(seconds/3600),"hour"],[Math.floor(seconds%3600/60),"minute"],[seconds%60,"second"]]){
+    if(value||(!parts.length&&unit==="second")){
+      parts.push(...spokenNumber(value));
+      parts.push(unit+(value===1?"":"s"));
+    }
+  }
+  return parts;
+}
+function audioType(type){
+  if(navigator.audioSession)navigator.audioSession.type=type;
+}
+function stopCue(){
+  for(const source of playing){source.onended=null;source.stop()}
+  if(playing.length)audioType("ambient");
+  playing=[];
+}
+function prepareVoice(){
+  if(!$("gpsVoice").checked)return;
+  const Context=window.AudioContext||window.webkitAudioContext;
+  if(!Context)return;
+  try{
+    if(!audio){audioType("ambient");audio=new Context()}
+    audio.resume().catch(()=>{});
+    if(!voiceLoad)voiceLoad=fetch("./run-cues.mp3").then(response=>{
+      if(!response.ok)throw new Error("Run audio unavailable");
+      return response.arrayBuffer();
+    }).then(bytes=>audio.decodeAudioData(bytes)).then(buffer=>{voiceBuffer=buffer}).catch(error=>{
+      voiceLoad=null;console.warn(error);
+      if($("gpsVoice")?.checked)$("gpsVoiceLabel").textContent="Spoken splits unavailable. Splits still appear on screen.";
+    });
+  }catch(error){console.warn(error)}
+}
+function speak(words){
+  if(document.hidden||!$("gpsVoice")?.checked||!voiceBuffer||audio?.state!=="running")return;
+  stopCue();
+  try{
+    audioType("transient");
+    let when=audio.currentTime+.025;
+    for(const word of words){
+      const [offset,duration]=cues[word],source=audio.createBufferSource();
+      source.buffer=voiceBuffer;source.connect(audio.destination);
+      source.start(when,offset,duration);
+      playing.push(source);when+=duration;
+    }
+    playing.at(-1).onended=()=>{playing=[];audioType("ambient")};
+  }catch(error){console.warn(error);stopCue();audioType("ambient")}
+}
+function status(message){
+  lastStatus=message;
+  if($("gpsStatus"))$("gpsStatus").textContent=message;
+}
+function ui(){
+  if(!$("gpsPanel"))return;
+  const mi=(run?.meters||0)/MILE,t=elapsed();
+  $("gpsStart").disabled=busy();$("gpsTurn").disabled=busy();
+  $("gpsFinish").disabled=!busy();
+  document.querySelector("#mc2O .mc2x").disabled=busy();
+  $("gpsDistance").textContent=mi.toFixed(2)+" mi";
+  $("gpsTime").textContent=fmt(t);
+  $("gpsPace").textContent=mi>.015?fmt(t/mi)+"/mi":"—";
+  $("gpsSplit").textContent=lastSplit;
+}
+async function keepAwake(session){
+  if(!navigator.wakeLock||document.hidden||wakeLock||session.wakePending)return;
+  session.wakePending=true;
+  try{
+    const lock=await navigator.wakeLock.request("screen");
+    if(!session.active||run!==session||document.hidden){await lock.release();return}
+    wakeLock=lock;
+    lock.addEventListener("release",()=>{
+      if(wakeLock===lock)wakeLock=null;
+      if(run===session&&session.active&&!document.hidden){
+        $("gpsHint").textContent="Keep this screen awake while tracking.";
+      }
+    },{once:true});
+    $("gpsHint").textContent="Screen stays awake while tracking. Locking the phone interrupts GPS.";
+  }catch{
+    if(run===session&&session.active)$("gpsHint").textContent="Keep this screen awake while tracking.";
+  }finally{session.wakePending=false}
+}
+function interrupt(){
+  run.anchor=null;run.lastFix=null;
+  if(run.start!==null)run.interrupted=true;
+  stopCue();
+}
+document.addEventListener("visibilitychange",()=>{
+  if(!run?.active)return;
+  if(document.hidden){interrupt();return}
+  run.visibleSince=Date.now();
+  status(run.interrupted?"Waiting for GPS. Recorded distance may be short.":"Waiting for GPS.");
+  keepAwake(run);ui();
+});
+function got(p){
+  if(!run?.active||document.hidden)return;
+  const {latitude,longitude,accuracy}=p.coords,q={latitude,longitude,time:p.timestamp};
+  if(!Number.isFinite(q.time)||q.time<run.visibleSince||Date.now()-q.time>MAX_GAP)return;
+  if(!Number.isFinite(accuracy)||accuracy>30){
+    if(run.start===null)status("GPS signal is weak. Wait for “GPS tracking” before moving.");
     return;
   }
-  try{
-    const d=JSON.parse(localStorage.getItem("marine_data_v5")||"{}");
-    if(!d||typeof d!=="object"||Array.isArray(d))throw new Error("Invalid stored data");
-    const now=new Date(),key=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-"+String(now.getDate()).padStart(2,"0");
-    const e=d[key]||{};
-    window.MC2.recordRun(e,{distance:mi,mileSplits:mileSplits.map(x=>({...x})),time:fmt(seconds),timeSeconds:seconds,pace:seconds>0?fmt(seconds/mi)+"/mi":"—",notes:(document.getElementById("gpsNotes")?.value||"").trim()||"Tracked with Marine Comeback GPS",completedAt:now.toISOString(),source:"GPS",track:points.map(p=>[+p.latitude.toFixed(6),+p.longitude.toFixed(6)])});
-    e.workout=true;e.workoutType="RUN";e.cardio=true;d[key]=e;
-    localStorage.setItem("marine_data_v5",JSON.stringify(d));
-    saved=true;
-    const message="Run saved: "+mi.toFixed(3)+" miles in "+fmt(seconds)+".";
-    status(message);
-    window.MC2.refreshRunStats();if(window.MarineJourney)MarineJourney.render(true);
-    try{if(typeof update==="function")update();}catch(err){console.error(err);}
-    try{if(typeof mcToast==="function")mcToast("Run Logged",message);}catch(err){}
-    speak("Run complete. "+mi.toFixed(2)+" miles.");
-  }catch(err){
-    console.error(err);
-    status("Tracking stopped, but saving failed. Your run is still here. Tap FINISH & SAVE to retry before starting another run.");
+  if(run.lastFix!==null){
+    if(q.time<=run.lastFix)return;
+    if(q.time-run.lastFix>MAX_GAP)interrupt();
   }
+  run.lastFix=q.time;
+  const previous=run.anchor;
+  if(!previous){
+    if(run.start===null)run.start=q.time;
+    run.anchor=q;run.track.push([q.latitude,q.longitude]);
+    status(run.interrupted?"GPS resumed. Recorded distance may be short.":"GPS tracking.");
+    ui();return;
+  }
+  const step=dist(previous,q),seconds=(q.time-previous.time)/1000;
+  if(step<3||step/seconds>8)return;
+  const previousMeters=run.meters;
+  run.meters+=step;run.anchor=q;run.track.push([q.latitude,q.longitude]);
+  const crossingTime=target=>(previous.time+(q.time-previous.time)*(target-previousMeters)/step-run.start)/1000;
+  const crossed=target=>target>previousMeters&&target<=run.meters;
+  const half=crossed(MILE/2),turn=run.turn>0&&crossed(run.turn*MILE);
+  const words=[];
+  if(half){words.push("half");lastSplit="Half mile · "+fmt(crossingTime(MILE/2))}
+  const mile=run.splits.length+1;
+  if(crossed(mile*MILE)){
+    const total=crossingTime(mile*MILE),split=total-(run.splits.at(-1)?.totalSeconds||0);
+    run.splits.push({mile,seconds:split,totalSeconds:total,estimated:run.interrupted});
+    lastSplit="Mile "+mile+" · "+fmt(split)+"/mi · "+fmt(total)+" total · "+fmt(total/mile)+"/mi average";
+    words.push("mile",...spokenNumber(mile));
+    words.push("split",...spokenTime(split),"per","total",...spokenTime(total),"average",...spokenTime(total/mile),"per");
+  }
+  if(turn){words.unshift("turn");if(!half&&words.length===1)lastSplit="Turnaround reached."}
+  if(words.length)speak(words);
   ui();
 }
-function mount(){let root=document.getElementById("mc2C");if(!root||document.getElementById("gpsPanel"))return;root.insertAdjacentHTML("beforeend",'<div id="gpsPanel"><h3>GPS RUN TRACKER (BETA)</h3><div class="gpsGrid"><div>Distance<div class="gpsMetric" id="gpsDistance">0.00 mi</div></div><div>Time<div class="gpsMetric" id="gpsTime">0:00</div></div><div>Average pace<div class="gpsMetric" id="gpsPace">—</div></div><div><label>Turnaround at (miles)</label><input type="number" id="gpsTurn" min="0" step=".1" value="1"></div></div><label><input type="checkbox" id="gpsVoice" checked> Spoken mile splits, total time and average pace</label><label for="gpsNotes">Run notes</label><textarea id="gpsNotes" rows="3" placeholder="How did the run feel? Stops, milestones, anything worth remembering."></textarea><p class="gpsStatus">GPS keeps tracking past your turnaround and every mile until you tap FINISH & SAVE.</p><div class="gpsGrid"><button id="gpsStart" type="button">START GPS RUN</button><button id="gpsFinish" type="button" disabled>FINISH & SAVE</button></div><p class="gpsStatus" id="gpsStatus">Keep your iPhone screen awake during the run. Background tracking is not reliable in Safari.</p></div>');document.getElementById("gpsStart").onclick=e=>{e.stopPropagation();begin()};document.getElementById("gpsFinish").onclick=e=>{e.stopPropagation();finish()};ui();if(lastStatus)status(lastStatus)}
-window.MarineGPS={mount,active:()=>active};
+function begin(){
+  if(busy())return;
+  if(!navigator.geolocation){status("GPS unavailable on this device.");return}
+  const turn=$("gpsTurn").valueAsNumber;
+  const session={active:true,start:null,seconds:0,meters:0,anchor:null,lastFix:null,splits:[],track:[],turn,interrupted:false,visibleSince:0};
+  run=session;
+  lastSplit="";$("gpsHistory").open=false;
+  status("Getting GPS. Wait for “GPS tracking” before moving.");
+  prepareVoice();keepAwake(run);
+  watch=navigator.geolocation.watchPosition(position=>{if(run===session)got(position)},error=>{
+    if(run!==session||!session.active)return;
+    if(error.code===1){
+      stopTracking();status("Location access denied. Allow location access and try again.");ui();
+    }else status("Waiting for a usable GPS signal.");
+  },{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+  tick=setInterval(()=>{
+    if(run.lastFix!==null&&Date.now()-run.lastFix>MAX_GAP){
+      interrupt();status("GPS signal lost. Distance may be short.");
+    }
+    ui();
+  },1000);
+  ui();
+}
+function stopTracking(){
+  run.seconds=elapsed();run.active=false;
+  if(watch!==null)navigator.geolocation.clearWatch(watch);
+  watch=null;clearInterval(tick);tick=null;
+  wakeLock?.release().catch(()=>{});wakeLock=null;
+  stopCue();
+  if(audio){
+    audio.suspend().catch(()=>{});audioType("auto");
+  }
+  $("gpsHint").textContent="Keep this screen open and awake for GPS.";
+}
+function finish(){
+  if(run?.active){
+    stopTracking();
+    const mi=run.meters/MILE;
+    if(!(mi>0)){
+      status("No distance recorded. Run was not saved.");ui();return;
+    }
+    const date=new Date();
+    pending={date,record:{distance:mi,time:fmt(run.seconds),timeSeconds:run.seconds,
+      pace:run.seconds>0?fmt(run.seconds/mi)+"/mi":"—",
+      mileSplits:run.splits,notes:"",completedAt:date.toISOString(),source:"GPS",
+      gpsInterrupted:run.interrupted,track:run.track.map(([lat,lon])=>[+lat.toFixed(6),+lon.toFixed(6)])}};
+  }
+  if(!pending)return;
+  const {record,date}=pending;
+  record.notes=$("gpsNotes").value.trim();
+  try{MC2.saveRun(record,date)}catch(error){
+    console.error(error);status("Save failed. Tap Finish & Save to retry.");ui();return;
+  }
+  pending=null;$("gpsNotes").value="";
+  const message="Run saved: "+record.distance.toFixed(2)+" mi in "+record.time+(record.gpsInterrupted?". GPS interrupted.":".");
+  status(message);ui();refreshHistory();
+  MC2.refreshRunStats();
+  try{window.MarineJourney?.render(true);if(typeof update==="function")update()}catch(error){console.error(error)}
+}
+let history=[];
+function refreshHistory(){
+  history=MC2.recentRuns();
+  $("gpsHistory").hidden=!history.length;
+  $("gpsSavedRun").replaceChildren(...history.map(({key,run},i)=>{
+    const time=run.completedAt?new Date(run.completedAt).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}):run.time||"";
+    return new Option(key+" · "+Number(run.distance).toFixed(2)+" mi"+(time?" · "+time:""),i);
+  }));
+  showSavedNotes();
+}
+function showSavedNotes(){
+  const item=history[$("gpsSavedRun").value];
+  $("gpsSavedNotes").value=item?.run.notes||"";
+  $("gpsNotesStatus").textContent=item?.run.gpsInterrupted?"GPS was interrupted during this run.":"";
+}
+function mount(){
+  const root=$("mc2C");
+  if(!root||$("gpsPanel"))return;
+  root.insertAdjacentHTML("beforeend",`<div id="gpsPanel">
+    <div class="gpsGrid">
+      <div>Distance<div class="gpsMetric" id="gpsDistance">0.00 mi</div></div>
+      <div>Time<div class="gpsMetric" id="gpsTime">0:00</div></div>
+      <div>Average pace<div class="gpsMetric" id="gpsPace">—</div></div>
+      <div><label for="gpsTurn">Turnaround (mi)</label><input type="number" id="gpsTurn" min="0" step="any" inputmode="decimal" value="1"></div>
+    </div>
+    <label class="gpsVoice"><input type="checkbox" id="gpsVoice" checked><span id="gpsVoiceLabel">Spoken splits</span></label>
+    <label for="gpsNotes"><strong>Run notes</strong></label>
+    <textarea id="gpsNotes" rows="2" maxlength="2000" placeholder="Unbroken distance, stops, how you felt…"></textarea>
+    <div class="gpsGrid"><button id="gpsStart" type="button">Start GPS Run</button><button id="gpsFinish" type="button" disabled>Finish &amp; Save</button></div>
+    <p class="gpsStatus" id="gpsHint">Keep this screen open and awake for GPS.</p>
+    <p class="gpsStatus" id="gpsStatus" role="status"></p>
+    <p class="gpsStatus" id="gpsSplit" aria-live="polite"></p>
+    <details id="gpsHistory" hidden><summary>Saved runs &amp; notes</summary>
+      <label for="gpsSavedRun">Run</label><select id="gpsSavedRun"></select>
+      <label for="gpsSavedNotes">Run notes</label><textarea id="gpsSavedNotes" rows="3" maxlength="2000"></textarea>
+      <button id="gpsSaveNotes" type="button">Save Notes</button><p id="gpsNotesStatus" class="gpsStatus" role="status"></p>
+    </details>
+  </div>`);
+  $("gpsStart").onclick=begin;$("gpsFinish").onclick=finish;
+  $("gpsVoice").onchange=()=>{if($("gpsVoice").checked&&run?.active)prepareVoice();else stopCue()};
+  $("gpsSavedRun").onchange=showSavedNotes;
+  $("gpsSaveNotes").onclick=()=>{
+    const selected=history[$("gpsSavedRun").value];
+    if(!selected)return;
+    const notes=$("gpsSavedNotes").value.trim();
+    try{MC2.saveRunNotes(selected,notes);selected.run={...selected.run,notes};$("gpsNotesStatus").textContent="Notes saved."}
+    catch(error){console.error(error);$("gpsNotesStatus").textContent="Notes could not be saved. Reopen the run log and try again."}
+  };
+  refreshHistory();ui();status(lastStatus);
+}
+window.MarineGPS={mount,busy};
 })();
 </script>
+
 <style id="marine-journey-css">
 #mcJourney{margin-top:14px;border-top:1px solid #ffffff20;padding-top:12px}
 #mcJourney .jTop{display:flex;justify-content:space-between;align-items:center;gap:8px}
@@ -7599,7 +7874,6 @@ window.MarineGPS={mount,active:()=>active};
 .jDialog{border:1px solid #d8bd6480;border-radius:20px;padding:18px;background:#101810;color:var(--text);width:min(94vw,620px);max-height:90dvh;overflow:auto}
 .jDialog::backdrop{background:#000c}.jDialog .jClose{float:right;width:auto;margin:0 0 8px 8px;padding:8px 13px}
 .jBrief{display:flex;gap:12px;align-items:center;clear:both}.jBrief img{width:95px;height:110px;object-fit:contain}
-.jChoices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;clear:both}.jChoices button{font-size:.78rem;padding:12px 5px}
 .jCompare{display:grid;grid-template-columns:1fr 1fr;gap:10px}.jCompare figure{margin:0}.jCompare img{width:100%;height:230px;object-fit:contain;background:#070907;border-radius:10px}.jCompare figcaption{font-size:.72rem;color:var(--muted);margin-top:5px}
 #jPhotoStatus,#jStatus{font-size:.82rem;line-height:1.4;color:var(--muted)}
 .jDialog video{max-height:230px;width:100%;border-radius:12px}
@@ -7608,12 +7882,8 @@ window.MarineGPS={mount,active:()=>active};
 <dialog id="jMission" class="jDialog" aria-labelledby="jMissionTitle">
  <button type="button" class="secondary jClose" onclick="MarineJourney.close()">Close</button>
  <h2 id="jMissionTitle">Goblin deployment</h2>
- <div class="jBrief"><img src="goblin_cards/drill-sergeant-goblin.webp" alt="Your drill sergeant goblin"><div><strong id="jPep"></strong><p class="small">Arm candy is the long game. Choose the work you can do today.</p></div></div>
+ <div class="jBrief"><img src="goblin_cards/drill-sergeant-goblin.webp" alt="Your drill sergeant goblin"><div><strong id="jPep"></strong></div></div>
  <div id="jMedia"></div>
- <p id="jMissionState" class="small"></p>
- <div class="jChoices"><button type="button" class="yellow" onclick="MarineJourney.choose('full')">Full</button><button type="button" onclick="MarineJourney.choose('minimum')">Minimum</button><button type="button" class="secondary" onclick="MarineJourney.choose('recovery')">Recovery</button></div>
- <p class="tiny">Full: your existing Run or Push/Pull. Minimum: two exercises, two sets each. Recovery: rest without a running prompt. Choose movements appropriate for how you feel.</p>
- <div id="jPlan"></div>
 </dialog>
 <script id="marine-journey-js">
 window.MarineJourney=(()=>{
@@ -7628,8 +7898,9 @@ window.MarineJourney=(()=>{
    for(const k of Object.keys(d).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k)&&k<=today).sort()){
      const e=d[k]||{},worked=!!(e.workout||e.gymSession||e.runSession);
      if(worked){
-       const base=e.gymSession?.minimum?60:100;
-       if(!s.awards[k+":work"]){s.awards[k+":work"]={xp:base,label:e.gymSession?.minimum?"Minimum mission":"Workout completed"};added+=k===today?base:0;}
+       const partial=e.gymSession?.minimum||e.gymSession?.partial;
+       const base=partial?60:100;
+       if(!s.awards[k+":work"]){s.awards[k+":work"]={xp:base,label:partial?"Partial workout":"Workout completed"};added+=k===today?base:0;}
        const gap=previous?(new Date(k+"T12:00:00")-new Date(previous+"T12:00:00"))/86400000:0;
        if(gap>=7&&!s.awards[k+":comeback"]){s.awards[k+":comeback"]={xp:50,label:"Comeback"};added+=k===today?50:0;}
        previous=k;
@@ -7643,13 +7914,15 @@ window.MarineJourney=(()=>{
      const r=reconcile(),level=1+Math.floor(r.xp/500),names=["Comeback Recruit","Couch Defector","Goblin Regular","Dad Bod Challenger","Arm Candy Contender"];
      $("jRank").textContent="Level "+level+" · "+names[Math.min(names.length-1,level-1)];
      $("jXP").textContent=r.xp+" XP";$("jProgress").value=r.xp%500;
-     const e=read(STORE)[day()]||{},plan=r.state.plans[day()];
-     $("jStatus").textContent=e.workout?"Work logged. The goblin approves.":e.restDay||e.recovery?"Recovery recorded. Your progress stays yours.":plan?"Today's choice: "+plan+". Ready when you are.":"Your next visit counts. Full, minimum, or recovery.";
+     const e=read(STORE)[day()]||{};
+     $("jStatus").textContent=e.workout?"Work logged. The goblin approves.":e.restDay||e.recovery?"Recovery recorded. Your progress stays yours.":"Your next visit counts.";
      if(celebrate&&r.added)feedback("Goblin approves","+"+r.added+" XP. Progress banked.");
    }catch(e){$("jStatus").textContent="Progress could not be saved. Your existing logs have not been changed.";console.error(e)}
  }
- const lines=["Marine, the couch has made a compelling offer. Give the gym a counteroffer.","No epic comeback speech required. Choose a mission and get through the door.","The Dad Bod has home-field advantage. Let's play this one away.","You don't need last month's motivation. Just today's next step.","The goblin remembers your mile. That Marine is still in there."];
- function open(){const e=read(STORE)[day()]||{};$("jPep").textContent=lines[Math.floor(Math.random()*lines.length)];$("jPlan").replaceChildren();$("jMissionState").textContent=e.workout?"You've already logged work today. No extra session required.":e.restDay||e.recovery?"Recovery is selected today. Rest is a valid mission.":"Choose before the drive home.";
+ const lines=["Marine, the couch has made a compelling offer. Give the gym a counteroffer.","Marine, start with the gym door. The goblin can handle the speech.","The Dad Bod has home-field advantage. Let's play this one away.","You don't need last month's motivation. Just today's next step.","The goblin remembers your mile. That Marine is still in there."];
+ function open(){
+   const e=read(STORE)[day()]||{};
+   $("jPep").textContent=lines[Math.floor(Math.random()*lines.length)];
    $("jMedia").replaceChildren();
    const clips=e.restDay||e.recovery?["sunday-recovery-goblin"]:["parking-lot-goblin","back-in-the-fight-goblin","future-you"];
    const video=document.createElement("video");video.controls=true;video.playsInline=true;video.preload="none";video.src="morale_videos/"+clips[Math.floor(Math.random()*clips.length)]+".mp4";
@@ -7657,18 +7930,6 @@ window.MarineJourney=(()=>{
    $("jMission").showModal();
  }
  function close(){$("jMedia").querySelector("video")?.pause();$("jMission").close()}
- function choose(mode){
-   try{const s=state();s.plans[day()]=mode;write(s);
-     if(mode==="recovery"){
-       const d=read(STORE),k=day();d[k]={...(d[k]||{}),restDay:true,recovery:true};localStorage.setItem(STORE,JSON.stringify(d));
-       close();render(true);try{if(typeof update==="function")update()}catch(e){}return;
-     }
-     const root=$("jPlan");root.replaceChildren();const p=document.createElement("p");p.className="small";p.textContent=mode==="minimum"?"Two exercises, two working sets each. Actual weights and reps; no automatic increases.":"Choose today's session.";root.append(p);
-     const choices=mode==="minimum"?[["Push","A"],["Pull","B"]]:[["Run","run"],["Push","A"],["Pull","B"]];
-     for(const [name,code] of choices){const b=document.createElement("button");b.type="button";b.textContent=name;b.onclick=()=>{close();if(code==="run")MC2.run();else MC2.work(code,mode==="minimum")};root.append(b)}
-     render();
-   }catch(e){feedback("Could not save","Please try again.")}
- }
  function download(name,blob){const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),20000)}
  function db(){return new Promise((resolve,reject)=>{const req=indexedDB.open("marine_progress_photos_v1",1);req.onupgradeneeded=()=>req.result.createObjectStore("photos",{keyPath:"id"});req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)})}
  async function photos(action,value){const database=await db();try{return await new Promise((resolve,reject)=>{const tx=database.transaction("photos",action==="getAll"?"readonly":"readwrite"),store=tx.objectStore("photos"),req=action==="getAll"?store.getAll():store[action](value);let result;req.onsuccess=()=>result=req.result;tx.oncomplete=()=>resolve(result);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error)})}finally{database.close()}}
@@ -7721,7 +7982,7 @@ window.MarineJourney=(()=>{
    await photos("delete",id);await listPhotos();
  }
  function init(){
-   const root=document.createElement("div");root.id="mcJourney";root.innerHTML='<div class="jTop"><strong id="jRank">Your comeback</strong><span class="tiny" id="jXP">0 XP</span></div><progress id="jProgress" max="500" value="0" aria-label="Progress to next level"></progress><p id="jStatus" role="status"></p><button type="button" class="yellow" onclick="MarineJourney.open()">DEPLOY THE GOBLIN</button><details><summary>Your journey &amp; photo comparisons</summary><p class="tiny">100 XP per workout day · 60 for a minimum session · 50 comeback bonus after 7+ days away · 20 for recorded recovery. Once earned, XP stays. 500 XP per level. No points for opening the app.</p><p class="small">Private photos stay in this browser on this device. They do not sync. Export a backup before clearing browser data or changing phones.</p><label for="jPhotoView">Photo angle</label><select id="jPhotoView"><option value="front">Front</option><option value="side">Side</option><option value="back">Back</option></select><label for="jPhotoDate">Photo date</label><input id="jPhotoDate" type="date"><label for="jPhotoFile">Add a progress photo</label><input id="jPhotoFile" type="file" accept="image/*"><button type="button" class="secondary" onclick="MarineJourney.addPhoto()">Save photo</button><div class="row"><div><label for="jBefore">Before</label><select id="jBefore"></select></div><div><label for="jAfter">After</label><select id="jAfter"></select></div></div><div class="jCompare"><figure><img id="jBeforeImg" hidden alt="Earlier progress photo"><figcaption id="jBeforeCaption"></figcaption></figure><figure><img id="jAfterImg" hidden alt="Later progress photo"><figcaption id="jAfterCaption"></figcaption></figure></div><p id="jPhotoStatus" role="status"></p><button type="button" class="secondary" onclick="MarineJourney.backup()">Export journey &amp; photo backup</button><label for="jImport">Import journey &amp; photos (workout logs stay unchanged)</label><input id="jImport" type="file" accept=".json,application/json"><button type="button" class="secondary" onclick="MarineJourney.removePhoto()">Delete selected After photo</button></details><details><summary>Reminders &amp; recovery</summary><p class="small">The 3:55 p.m. weekday goblin reminder is delivered through ChatGPT. Enable ChatGPT notifications on your phone. It links to this briefing and cannot read these local workout logs.</p><p class="tiny">Marine Comeback does not currently send its own closed-app push notifications or block other iPhone apps. A reminder is an invitation; recovery is always available.</p></details>';
+   const root=document.createElement("div");root.id="mcJourney";root.innerHTML='<div class="jTop"><strong id="jRank">Your comeback</strong><span class="tiny" id="jXP">0 XP</span></div><progress id="jProgress" max="500" value="0" aria-label="Progress to next level"></progress><p id="jStatus" role="status"></p><button type="button" class="yellow" onclick="MarineJourney.open()">DEPLOY THE GOBLIN</button><details><summary>Your journey &amp; photo comparisons</summary><p class="tiny">100 XP per workout day · 60 for a partial workout · 50 comeback bonus after 7+ days away · 20 for recorded recovery. Once earned, XP stays. 500 XP per level. No points for opening the app.</p><p class="small">Private photos stay in this browser on this device. They do not sync. Export a backup before clearing browser data or changing phones.</p><label for="jPhotoView">Photo angle</label><select id="jPhotoView"><option value="front">Front</option><option value="side">Side</option><option value="back">Back</option></select><label for="jPhotoDate">Photo date</label><input id="jPhotoDate" type="date"><label for="jPhotoFile">Add a progress photo</label><input id="jPhotoFile" type="file" accept="image/*"><button type="button" class="secondary" onclick="MarineJourney.addPhoto()">Save photo</button><div class="row"><div><label for="jBefore">Before</label><select id="jBefore"></select></div><div><label for="jAfter">After</label><select id="jAfter"></select></div></div><div class="jCompare"><figure><img id="jBeforeImg" hidden alt="Earlier progress photo"><figcaption id="jBeforeCaption"></figcaption></figure><figure><img id="jAfterImg" hidden alt="Later progress photo"><figcaption id="jAfterCaption"></figcaption></figure></div><p id="jPhotoStatus" role="status"></p><button type="button" class="secondary" onclick="MarineJourney.backup()">Export journey &amp; photo backup</button><label for="jImport">Import journey &amp; photos (workout logs stay unchanged)</label><input id="jImport" type="file" accept=".json,application/json"><button type="button" class="secondary" onclick="MarineJourney.removePhoto()">Delete selected After photo</button></details><details><summary>Reminders &amp; recovery</summary><p class="small">The 3:55 p.m. weekday goblin reminder is delivered through ChatGPT. Enable ChatGPT notifications on your phone. It links to this briefing and cannot read these local workout logs.</p><p class="tiny">Marine Comeback does not currently send its own closed-app push notifications or block other iPhone apps. A reminder is an invitation; recovery is always available.</p></details>';
    $("fitnessPhase2").append(root);$("jPhotoDate").value=day();$("jPhotoView").onchange=listPhotos;$("jBefore").onchange=compare;$("jAfter").onchange=compare;$("jImport").onchange=e=>restore(e.target.files[0]);
    $("jMission").addEventListener("close",()=>$("jMedia").querySelector("video")?.pause());
    render();listPhotos();
@@ -7731,7 +7992,7 @@ window.MarineJourney=(()=>{
    setInterval(()=>render(true),15000);
  }
  document.addEventListener("DOMContentLoaded",init);
- return{open,close,choose,render,reconcile,addPhoto,compare,backup,restore,removePhoto};
+ return{open,close,render,reconcile,addPhoto,compare,backup,restore,removePhoto};
 })();
 </script>
 
