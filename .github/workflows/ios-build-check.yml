@@ -1,4 +1,4 @@
-name: Verify iOS target
+name: Build iPhone package
 on:
   push:
     branches: [ios-locked-run]
@@ -13,4 +13,22 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Compile the unsigned iOS target
-        run: xcodebuild -project ios/MarineComeback.xcodeproj -target MarineComeback -sdk iphoneos CODE_SIGNING_ALLOWED=NO build
+        run: |
+          xcodebuild -project ios/MarineComeback.xcodeproj -target MarineComeback \
+            -configuration Release -sdk iphoneos CONFIGURATION_BUILD_DIR="$RUNNER_TEMP/device-build" \
+            CODE_SIGNING_ALLOWED=NO build
+      - name: Package and check the device app
+        run: |
+          mkdir -p "$RUNNER_TEMP/package/Payload"
+          cp -R "$RUNNER_TEMP/device-build/MarineComeback.app" "$RUNNER_TEMP/package/Payload/"
+          cd "$RUNNER_TEMP/package"
+          xcrun lipo -verify_arch arm64 Payload/MarineComeback.app/MarineComeback
+          /usr/libexec/PlistBuddy -c 'Print :UIBackgroundModes' Payload/MarineComeback.app/Info.plist
+          zip -qr MarineComeback.ipa Payload
+          unzip -t MarineComeback.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MarineComeback-unsigned-iPhone
+          path: ${{ runner.temp }}/package/MarineComeback.ipa
+          if-no-files-found: error
+          retention-days: 30
