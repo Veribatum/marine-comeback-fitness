@@ -22,11 +22,11 @@ jobs:
           mkdir -p "$RUNNER_TEMP/package/Payload"
           cp -R "$RUNNER_TEMP/device-build/MarineComeback.app" "$RUNNER_TEMP/package/Payload/"
           cd "$RUNNER_TEMP/package"
-          xcrun lipo -verify_arch arm64 Payload/MarineComeback.app/MarineComeback
+          xcrun lipo Payload/MarineComeback.app/MarineComeback -verify_arch arm64
           /usr/libexec/PlistBuddy -c 'Print :UIBackgroundModes' Payload/MarineComeback.app/Info.plist
           zip -qr MarineComeback.ipa Payload
           unzip -t MarineComeback.ipa
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: MarineComeback-unsigned-iPhone
           path: ${{ runner.temp }}/package/MarineComeback.ipa
