@@ -1,4 +1,4 @@
-const CACHE_NAME="marine-comeback-learning-v7";
+const CACHE_NAME="marine-comeback-learning-v8";
 const APP_URL=new URL("./index.html",self.registration.scope).href;
 const CUES_URL=new URL("./run-cues.mp3",self.registration.scope).href;
 const OFFLINE_ASSETS=[CUES_URL,...["evening.js","evening.css","learning-hub.js"].map(path=>new URL(path,self.registration.scope).href)];
@@ -48,7 +48,17 @@ self.addEventListener("fetch",event=>{
   const url=new URL(event.request.url);
   if(url.origin!==self.location.origin||event.request.method!=="GET")return;
   if(OFFLINE_ASSETS.includes(url.href)){
-    event.respondWith(caches.open(CACHE_NAME).then(async cache=>await cache.match(url.href)||fetch(event.request)));
+    // Prefer freshly deployed scripts while keeping an offline fallback for installed PWAs.
+    event.respondWith((async()=>{
+      const cache=await caches.open(CACHE_NAME);
+      try{
+        const response=await fetch(new Request(event.request,{cache:"no-store"}));
+        if(response.ok) await cache.put(url.href,response.clone());
+        return response;
+      }catch{
+        return await cache.match(url.href)||new Response("Offline asset unavailable",{status:503});
+      }
+    })());
     return;
   }
   if(event.request.mode==="navigate"){
