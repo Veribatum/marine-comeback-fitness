@@ -1939,7 +1939,7 @@ section:has(button[onclick*="saveDailyWithFeedback"]){
 <h2>Backup / Restore</h2><button class="secondary" onclick="exportBackup()">Export Backup</button><button class="secondary" onclick="importBackup()">Import Backup</button><textarea id="backupBox" class="copybox"></textarea></section>
 </div>
 <script>
-if ("serviceWorker" in navigator) window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+if ("serviceWorker" in navigator) window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js?v=8",{updateViaCache:"none"}).catch(()=>{}));
 const habits=["workout","protein","mealsDone","snacks","heartburnFriendly","lateFood","waterDone","cardio","sleep"];
 const allChecks=["workout","protein","mealsDone","snacks","heartburnFriendly","lateFood","waterDone","cardio","sleep","priming","redLight"];
 const ranks=[{name:"Recruit",short:"RCT",min:0},{name:"Private",short:"PVT",min:3},{name:"Private First Class",short:"PFC",min:7},{name:"Lance Corporal",short:"LCpl",min:14},{name:"Corporal",short:"Cpl",min:25},{name:"Sergeant",short:"Sgt",min:40},{name:"Staff Sergeant",short:"SSgt",min:60},{name:"Gunnery Sergeant",short:"GySgt",min:85}];
@@ -8105,8 +8105,8 @@ window.MarineJourney=(()=>{
 })();
 </script>
 
-<script src="./learning-hub.js" defer></script>
-<script src="./evening.js" defer></script>
+<script src="./learning-hub.js?v=8" defer></script>
+<script src="./evening.js?v=8" defer></script>
 <script src="./reminders.js" defer></script>
 </body>
 </html>
