@@ -53,6 +53,8 @@
     video.hidden = !unlocked;
     video.open = false;
     byId('mcEveningUnlock').hidden = unlocked;
+    byId('mcEveningTitle').textContent = section === 'reading' ? 'Learn' : 'Evening';
+    if (section === 'reading') window.MarineLearning?.refresh();
     if (unlocked) clip(section);
     else byId('mcEveningClip').replaceChildren();
     byId('mcEveningStatus').textContent = '';
@@ -127,20 +129,22 @@
       <form method="dialog"><button class="secondary jClose">Close</button></form>
       <h2 id="mcEveningTitle">Evening</h2>
       <div class="eveTabs" aria-label="Evening activities">
-        <button type="button" data-evening-tab="reading" class="secondary">Read</button>
+        <button type="button" data-evening-tab="reading" class="secondary">Learn</button>
         <button type="button" data-evening-tab="journal" class="secondary">Journal</button>
         <button type="button" data-evening-tab="recap" class="secondary">This week</button>
       </div>
       <details id="mcEveningVideo"><summary>Play the goblin clip</summary><div id="mcEveningClip"></div><p class="small" id="mcEveningCaption"></p></details>
       <section id="mcEvening-reading">
+        <div id="mcLearningHub"></div>
+        <details class="mcLearnTimer"><summary>Reading timer</summary>
         <p id="mcEveningMark" class="small"></p>
         <p id="mcEveningClock" aria-label="Reading timer">10:00</p>
         <button type="button" id="mcEveningStart">Read for 10 minutes</button>
-        <p class="small"><a href="https://mind-expansion.jamean-berry.chatgpt.site" target="_blank" rel="noopener noreferrer">Open Mind Expansion</a></p>
         <label for="mcEveningCheckpoint">Where did you leave off? (optional)</label>
         <input id="mcEveningCheckpoint" type="text" maxlength="160" placeholder="Book, chapter, or page">
         <button type="button" id="mcEveningLog" hidden>Log reading</button>
         <button type="button" id="mcEveningCancel" class="secondary" hidden>Reset timer</button>
+        </details>
       </section>
       <section id="mcEvening-journal" hidden>
         <label for="mcEveningDate">Journal date</label><select id="mcEveningDate"></select>
@@ -153,7 +157,17 @@
       <section id="mcEvening-recap" hidden><p id="mcEveningRecap"></p><p id="mcEveningUnlock" class="small" hidden>Unlock the goblin recap by reading or journaling on three different days.</p></section>
       <p id="mcEveningStatus" class="small" role="status"></p>`;
     document.body.append(dialog);
+    window.MarineLearning?.mount();
     byId('mcEveningOpen').onclick = () => open();
+    const dashboard = document.querySelector('.commandDashboard');
+    if (dashboard) {
+      const learn = document.createElement('button');
+      learn.type = 'button';
+      learn.className = 'secondary';
+      learn.textContent = 'Learn';
+      learn.onclick = () => open();
+      dashboard.append(learn);
+    }
     dialog.querySelectorAll('[data-evening-tab]').forEach(tab => { tab.onclick = () => select(tab.dataset.eveningTab); });
     dialog.onclose = () => {
       byId('mcEveningClip').querySelector('video')?.pause();

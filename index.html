@@ -8010,7 +8010,12 @@ window.MarineJourney=(()=>{
        if(complete&&!s.awards[awardKey]){s.awards[awardKey]={xp,label};added+=date===today?xp:0}
      }
    }
-   write(s);return{state:s,added,xp:Object.values(s.awards).reduce((sum,a)=>sum+(Number(a.xp)||0),0)};
+   let learningXP=0;
+   try{
+     const learning=JSON.parse(localStorage.getItem("marine_learning_summary_v1")||"{}");
+     learningXP=(Number(learning.mindXP)||0)+(Number(learning.novaXP)||0);
+   }catch{}
+   write(s);return{state:s,added,xp:Object.values(s.awards).reduce((sum,a)=>sum+(Number(a.xp)||0),learningXP)};
  }
  function render(celebrate=false){
    try{
@@ -8100,6 +8105,7 @@ window.MarineJourney=(()=>{
 })();
 </script>
 
+<script src="./learning-hub.js" defer></script>
 <script src="./evening.js" defer></script>
 <script src="./reminders.js" defer></script>
 </body>

@@ -1,7 +1,7 @@
-const CACHE_NAME="marine-comeback-evening-v5";
+const CACHE_NAME="marine-comeback-learning-v6";
 const APP_URL=new URL("./index.html",self.registration.scope).href;
 const CUES_URL=new URL("./run-cues.mp3",self.registration.scope).href;
-const OFFLINE_ASSETS=[CUES_URL,...["evening.js","evening.css"].map(path=>new URL(path,self.registration.scope).href)];
+const OFFLINE_ASSETS=[CUES_URL,...["evening.js","evening.css","learning-hub.js"].map(path=>new URL(path,self.registration.scope).href)];
 self.addEventListener("install",event=>{
   event.waitUntil(caches.open(CACHE_NAME).then(async cache=>{
     await cache.addAll([APP_URL,...OFFLINE_ASSETS].map(url=>new Request(url,{cache:"reload"})));
