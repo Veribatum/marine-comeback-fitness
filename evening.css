@@ -10,7 +10,7 @@
 #mcEveningClock{font-variant-numeric:tabular-nums;font-size:2rem;font-weight:700;margin:.4rem 0}
 #mcEveningDialog [hidden],#mcEveningCard [hidden]{display:none}
 
-#mcLearningHub .mcLearnSource{margin:.65rem 0}
-#mcLearningHub a{display:block;text-align:center;padding:12px;border:1px solid #d8bd6480;border-radius:10px;color:var(--text);text-decoration:none}
+#mcLearnApps .mcLearnSource{margin:.65rem 0}
+#mcLearnApps a{display:block;text-align:center;padding:12px;border:1px solid #d8bd6480;border-radius:10px;color:var(--text);text-decoration:none}
 #mcLearningHub .small{margin:.35rem 0}
 #mcEveningDialog .mcLearnTimer{margin:12px 0}

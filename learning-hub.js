@@ -24,10 +24,12 @@ window.MarineLearning = (() => {
 
   function paint(data = summary()) {
     const count = (value, noun, plural) => (value || 0) + ' ' + (value === 1 ? noun : plural);
-    byId('mcLearnMindCount').textContent = data.mindConnected
-      ? count(data.lessons, 'lesson learned', 'lessons learned') + ' · ' + data.mindXP + ' XP' : 'Connect to sync completed lessons';
-    byId('mcLearnNovaCount').textContent = data.novaConnected
-      ? count(data.missions, 'mission completed', 'missions completed') + ' · ' + data.novaXP + ' XP' : 'Connect to sync completed missions';
+    const mind = byId('mcLearnMindCount');
+    mind.hidden = !data.mindConnected;
+    mind.textContent = 'Mind Expansion · ' + count(data.lessons, 'lesson learned', 'lessons learned') + ' · ' + (data.mindXP || 0) + ' XP';
+    const nova = byId('mcLearnNovaCount');
+    nova.hidden = !data.novaConnected;
+    nova.textContent = 'Nova Academy · ' + count(data.missions, 'mission completed', 'missions completed') + ' · ' + (data.novaXP || 0) + ' XP';
     byId('mcLearnXp').textContent = ((data.mindXP || 0) + (data.novaXP || 0)).toLocaleString() + ' learning XP';
     byId('mcLearnMind').textContent = data.mindConnected ? 'Open Mind Expansion' : 'Connect & open Mind Expansion';
     byId('mcLearnNova').textContent = data.novaConnected ? 'Open Nova Academy' : 'Connect & open Nova Academy';
@@ -62,8 +64,11 @@ window.MarineLearning = (() => {
     if (!panel) return;
     panel.innerHTML = `
       <p id="mcLearnXp" class="small"></p>
-      <div class="mcLearnSource"><a id="mcLearnMind" class="secondary" rel="noreferrer">Open Mind Expansion</a><p id="mcLearnMindCount" class="small"></p></div>
-      <div class="mcLearnSource"><a id="mcLearnNova" class="secondary" rel="noreferrer">Open Nova Academy</a><p id="mcLearnNovaCount" class="small"></p></div>
+      <p id="mcLearnMindCount" class="small" hidden></p>
+      <p id="mcLearnNovaCount" class="small" hidden></p>`;
+    byId('mcLearnAppControls').innerHTML = `
+      <div class="mcLearnSource"><a id="mcLearnMind" class="secondary" rel="noreferrer">Open Mind Expansion</a></div>
+      <div class="mcLearnSource"><a id="mcLearnNova" class="secondary" rel="noreferrer">Open Nova Academy</a></div>
       <button type="button" id="mcLearnRefresh" class="secondary">Refresh progress</button>
       <details><summary>Connection help</summary><p class="small">Opening an app from Learn connects its completed lessons or missions to this hub. If sign-in interrupts the connection, copy this code and use Connect learning progress in that app.</p>
       <label for="mcLearnCode">Private connection code</label><input id="mcLearnCode" readonly autocomplete="off" spellcheck="false"><button type="button" id="mcLearnCopy" class="secondary">Copy code</button></details>

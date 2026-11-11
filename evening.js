@@ -53,7 +53,6 @@
     video.hidden = !unlocked;
     video.open = false;
     byId('mcEveningUnlock').hidden = unlocked;
-    byId('mcEveningTitle').textContent = section === 'reading' ? 'Learn' : 'Evening';
     if (section === 'reading') window.MarineLearning?.refresh();
     if (unlocked) clip(section);
     else byId('mcEveningClip').replaceChildren();
@@ -145,6 +144,7 @@
         <button type="button" id="mcEveningLog" hidden>Log reading</button>
         <button type="button" id="mcEveningCancel" class="secondary" hidden>Reset timer</button>
         </details>
+        <details id="mcLearnApps"><summary>Learning apps</summary><div id="mcLearnAppControls"></div></details>
       </section>
       <section id="mcEvening-journal" hidden>
         <label for="mcEveningDate">Journal date</label><select id="mcEveningDate"></select>
@@ -159,15 +159,6 @@
     document.body.append(dialog);
     window.MarineLearning?.mount();
     byId('mcEveningOpen').onclick = () => open();
-    const dashboard = document.querySelector('.commandDashboard');
-    if (dashboard) {
-      const learn = document.createElement('button');
-      learn.type = 'button';
-      learn.className = 'secondary';
-      learn.textContent = 'Learn';
-      learn.onclick = () => open();
-      dashboard.append(learn);
-    }
     dialog.querySelectorAll('[data-evening-tab]').forEach(tab => { tab.onclick = () => select(tab.dataset.eveningTab); });
     dialog.onclose = () => {
       byId('mcEveningClip').querySelector('video')?.pause();
