@@ -1,4 +1,4 @@
-const CACHE_NAME="marine-comeback-learning-v8";
+const CACHE_NAME="marine-comeback-learning-v9";
 const APP_URL=new URL("./index.html",self.registration.scope).href;
 const CUES_URL=new URL("./run-cues.mp3",self.registration.scope).href;
 const OFFLINE_ASSETS=[CUES_URL,...["evening.js","evening.css","learning-hub.js"].map(path=>new URL(path,self.registration.scope).href)];

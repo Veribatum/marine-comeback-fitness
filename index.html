@@ -4020,71 +4020,131 @@ Review my week, call out the biggest win, the biggest miss, and give me the next
   <h2>Backup / Restore</h2>
   <button type="button" onclick="exportBackup()">Export Backup</button>
   <button type="button" onclick="importBackup()">Import Backup</button>
+  <p class="small">The backup includes your private journal entries.</p>
   <textarea id="backupBox" class="copybox" placeholder="Backup data appears here. Paste backup data here to restore."></textarea>
 </section>
 <script id="v68-backup-restore-js">
 (function(){
   const STORE = "marine_data_v5";
   const SETTINGS = "marine_settings_v5";
+  const EVENING = "marine_evening_v1";
+  const object = value => value && typeof value === "object" && !Array.isArray(value);
+  const read = key => JSON.parse(localStorage.getItem(key) || "{}");
 
-  window.exportBackup = function(){
-    const payload = {
-      version: "marine-comeback-backup-v1",
-      exportedAt: new Date().toISOString(),
-      data: JSON.parse(localStorage.getItem(STORE) || "{}"),
-      settings: JSON.parse(localStorage.getItem(SETTINGS) || "{}")
-    };
+  function notice(title, message){
+    if(typeof mcToast === "function") mcToast(title, message);
+    else alert(message);
+  }
 
-    const text = JSON.stringify(payload, null, 2);
-    const box = document.getElementById("backupBox");
-    if(box) box.value = text;
-
-    if(navigator.clipboard && navigator.clipboard.writeText){
-      navigator.clipboard.writeText(text).catch(function(){});
+  function mergeEvening(incoming){
+    if(!object(incoming) || !object(incoming.days) ||
+       (incoming.checkpoint !== undefined && typeof incoming.checkpoint !== "string")){
+      throw Error("The backup contains invalid evening data.");
     }
+    const current = read(EVENING);
+    const days = {...current.days};
+    let conflicts = 0;
+    for(const [date, entry] of Object.entries(incoming.days)){
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(date) || !object(entry)){
+        throw Error("The backup contains an invalid evening entry.");
+      }
+      const existing = days[date] || {};
+      const merged = {...existing};
+      if(entry.reading === true) merged.reading = true;
+      if(entry.journal !== undefined){
+        const journal = entry.journal;
+        if(!object(journal) || !Array.isArray(journal.answers) || journal.answers.length !== 3 ||
+           !journal.answers.every(answer => typeof answer === "string") || typeof journal.mood !== "string"){
+          throw Error("The backup contains an invalid journal entry.");
+        }
+        if(!existing.journal) merged.journal = {answers: journal.answers, mood: journal.mood};
+        else if(JSON.stringify(existing.journal) !== JSON.stringify(journal)) conflicts++;
+      }
+      days[date] = merged;
+    }
+    return {state: {...current, days, checkpoint: current.checkpoint || incoming.checkpoint || ""}, conflicts};
+  }
 
-    if(typeof mcToast === "function"){
-      mcToast("Backup Exported", "Backup copied. Save it somewhere safe.");
-    }else{
-      alert("Backup exported.");
+  function writeBackup(updates){
+    const writes = updates.map(([key, value]) => [key, JSON.stringify(value), localStorage.getItem(key)]);
+    const written = [];
+    try{
+      for(const [key, next, previous] of writes){
+        localStorage.setItem(key, next);
+        written.push([key, previous]);
+      }
+    }catch(error){
+      for(const [key, previous] of written.reverse()){
+        if(previous === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, previous);
+      }
+      throw error;
+    }
+  }
+
+  window.exportBackup = async function(){
+    try{
+      const {days = {}, checkpoint = ""} = read(EVENING);
+      const payload = {
+        version: "marine-comeback-backup-v1",
+        exportedAt: new Date().toISOString(),
+        data: read(STORE),
+        settings: read(SETTINGS),
+        evening: {days, checkpoint}
+      };
+      const text = JSON.stringify(payload, null, 2);
+      const box = document.getElementById("backupBox");
+      if(box) box.value = text;
+      try{
+        await navigator.clipboard.writeText(text);
+        notice("Backup Exported", "Backup copied, including your journal entries. Save it somewhere private.");
+      }catch{
+        if(box) box.select();
+        notice("Backup Ready", "Copy the backup from the text box and save it somewhere private.");
+      }
+    }catch{
+      notice("Export Failed", "The saved data could not be read.");
     }
   };
 
   window.importBackup = function(){
     const box = document.getElementById("backupBox");
     const raw = box ? box.value.trim() : "";
-
     if(!raw){
-      if(typeof mcToast === "function") mcToast("No Backup Found", "Paste backup data into the box first.");
-      else alert("Paste backup data into the box first.");
+      notice("No Backup Found", "Paste backup data into the box first.");
       return;
     }
 
+    let evening;
     try{
       const payload = JSON.parse(raw);
-
-      if(payload.data){
-        localStorage.setItem(STORE, JSON.stringify(payload.data));
-      }else{
-        localStorage.setItem(STORE, JSON.stringify(payload));
+      if(!object(payload)) throw Error("Choose a Marine Comeback backup.");
+      const wrapped = Object.hasOwn(payload, "data");
+      if((wrapped && !object(payload.data)) || (!wrapped && Object.hasOwn(payload, "version")) ||
+         (payload.settings !== undefined && !object(payload.settings))){
+        throw Error("Choose a Marine Comeback backup.");
       }
 
-      if(payload.settings){
-        localStorage.setItem(SETTINGS, JSON.stringify(payload.settings));
+      const updates = [[STORE, wrapped ? payload.data : payload]];
+      if(payload.settings) updates.push([SETTINGS, payload.settings]);
+      if(Object.hasOwn(payload, "evening")){
+        evening = mergeEvening(payload.evening);
+        updates.push([EVENING, evening.state]);
       }
-
-      if(typeof refreshAll === "function") refreshAll();
-      if(typeof generateSummary === "function") generateSummary();
-
-      if(typeof mcToast === "function"){
-        mcToast("Backup Restored", "State restored. Reload if anything looks stale.");
-      }else{
-        alert("Backup restored. Reload if anything looks stale.");
-      }
-    }catch(err){
-      if(typeof mcToast === "function") mcToast("Import Failed", "That backup data was not valid JSON.");
-      else alert("Import failed. Backup data was not valid JSON.");
+      writeBackup(updates);
+    }catch(error){
+      notice("Import Failed", error instanceof SyntaxError ? "That backup data was not valid JSON." : error.message || "Could not save the backup.");
+      return;
     }
+
+    window.dispatchEvent(new Event("marine-backup-restored"));
+    if(typeof refreshAll === "function") refreshAll();
+    if(typeof generateSummary === "function") generateSummary();
+    window.MarineJourney?.render();
+    const conflicts = evening?.conflicts || 0;
+    notice("Backup Restored", conflicts
+      ? "Kept this device’s journal entries on " + conflicts + (conflicts === 1 ? " matching date." : " matching dates.")
+      : evening ? "Backup restored, including journal entries." : "Backup restored.");
   };
 })();
 </script>

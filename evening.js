@@ -205,6 +205,11 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
     byId('mcEveningOpen').addEventListener('focus', render);
     window.addEventListener('storage', render);
+    window.addEventListener('marine-backup-restored', () => {
+      if (draftDate) loadJournal(draftDate);
+      byId('mcEveningCheckpoint').value = read().checkpoint || '';
+      render();
+    });
     render();
     if (new URLSearchParams(location.search).get('mission') === 'evening') open();
   }
