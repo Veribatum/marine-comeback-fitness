@@ -2,12 +2,21 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
     "api/daily.js": {
-      "experimentalTriggers": [{ "type": "schedule/v1beta" }]
+      "experimentalTriggers": [
+        {
+          "type": "schedule/v1beta"
+        }
+      ]
     }
   },
   "schedules": {
     "marine-gym-reminder": {
       "schedule": "0 16 * * *",
+      "timezone": "America/Chicago",
+      "function": "api/daily"
+    },
+    "marine-evening-reminder": {
+      "schedule": "30 20 * * *",
       "timezone": "America/Chicago",
       "function": "api/daily"
     }

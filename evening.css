@@ -1,0 +1,11 @@
+#mcEveningCard{margin-top:14px;border-top:1px solid #ffffff20;padding-top:14px}
+#mcEveningCard .small{margin:.35rem 0 .65rem}
+#mcEveningDialog .eveTabs{display:flex;gap:8px;clear:both;margin:10px 0}
+#mcEveningDialog .eveTabs button{flex:1}
+#mcEveningDialog video{display:block;max-height:210px;margin:10px 0;width:100%;background:#101810}
+#mcEveningDialog label{display:block;margin-top:12px}
+#mcEveningDialog textarea,#mcEveningDialog input:not([type=checkbox]),#mcEveningDialog select{width:100%;min-height:44px}
+#mcEveningDialog textarea{min-height:64px}
+#mcEveningDialog button:not(.jClose){min-height:44px}
+#mcEveningClock{font-variant-numeric:tabular-nums;font-size:2rem;font-weight:700;margin:.4rem 0}
+#mcEveningDialog [hidden],#mcEveningCard [hidden]{display:none}

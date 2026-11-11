@@ -30,9 +30,16 @@ export function validateSubscription(value) {
   return { endpoint: endpoint.href, keys: { p256dh: keys.p256dh, auth: keys.auth } };
 }
 
-export function reminderPayload(date = new Date(), test = false) {
+export function reminderPayload(date = new Date(), test = false, kind = 'gym') {
   const day = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE,
     year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+  if (kind === 'evening') {
+    return { title: 'Marine Comeback', type: 'marine-evening-reminder',
+      body: test ? 'Evening reminders are connected. Tap to open your evening routine.' :
+        'Marine, put the scroll down. Read for ten minutes or write one line before bed.',
+      tag: test ? 'marine-evening-test' : 'marine-evening-' + day,
+      url: APP_URL + '?mission=evening', sentAt: date.toISOString() };
+  }
   const lines = [
     'Marine, grab your gym bag. The goblin has your pep talk ready.',
     'Marine, the couch can wait. Your gym goblin is ready.',
@@ -49,8 +56,8 @@ export async function readDevice(path) {
   return result?.statusCode === 200 ? new Response(result.stream).json() : null;
 }
 
-export async function saveDevice(path, subscription) {
-  await put(path, JSON.stringify({ subscription }), { access: 'private',
+export async function saveDevice(path, subscription, preferences) {
+  await put(path, JSON.stringify({ subscription, preferences }), { access: 'private',
     contentType: 'application/json', addRandomSuffix: false, allowOverwrite: true });
 }
 
@@ -72,12 +79,14 @@ export async function sendPush(subscription, payload) {
   });
 }
 
-export async function sendDaily(scheduledAt, storage = { list, put, del, readDevice }, send = sendPush) {
-  const payload = reminderPayload(scheduledAt);
+export async function sendDaily(scheduledAt, storage = { list, put, del, readDevice }, send = sendPush, kind = 'gym') {
+  const payload = reminderPayload(scheduledAt, false, kind);
   let cursor, sent = 0, failed = 0;
   do {
     const page = await storage.list({ prefix: 'devices/', limit: 100, cursor });
     for (const blob of page.blobs) {
+      const device = await storage.readDevice(blob.pathname);
+      if (!device || !(device.preferences?.[kind] ?? (kind === 'gym'))) continue;
       const claim = 'deliveries/' + payload.tag + '/' + digest(blob.pathname) + '.json';
       // Create-only claims prevent two scheduler invocations from sending the same daily cue.
       try {
@@ -87,8 +96,6 @@ export async function sendDaily(scheduledAt, storage = { list, put, del, readDev
         throw error;
       }
       try {
-        const device = await storage.readDevice(blob.pathname);
-        if (!device) continue;
         await send(device.subscription, payload);
         sent++;
       } catch (error) {
@@ -97,13 +104,13 @@ export async function sendDaily(scheduledAt, storage = { list, put, del, readDev
         } else {
           await storage.del(claim);
           failed++;
-          console.error('Gym reminder delivery failed', { status: error.statusCode || 'internal' });
+          console.error('Reminder delivery failed', { status: error.statusCode || 'internal' });
         }
       }
     }
     cursor = page.hasMore ? page.cursor : undefined;
   } while (cursor);
-  console.log('Gym reminders processed', { sent, failed });
-  if (failed) throw new Error('Some gym reminders could not be sent.');
+  console.log('Reminders processed', { kind, sent, failed });
+  if (failed) throw new Error('Some reminders could not be sent.');
   return { sent };
 }

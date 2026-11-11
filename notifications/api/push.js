@@ -40,15 +40,25 @@ async function change(request) {
       return response({ enabled: false });
     }
     const previous = await readDevice(path);
+    const preferences = data.preferences ?? previous?.preferences ?? { gym: true, evening: false };
+    if (typeof preferences.gym !== 'boolean' || typeof preferences.evening !== 'boolean') {
+      return response({ error: 'Invalid reminder choices.' }, 400);
+    }
     if (!previous && !await hasDeviceCapacity()) {
       return response({ error: 'Reminder device limit reached.' }, 409);
     }
-    // Send a confirmation through the push service before reporting a connection as working.
-    if (!previous || previous.subscription.endpoint !== subscription.endpoint || data.test === true) {
-      await sendPush(subscription, reminderPayload(new Date(), true));
+    const sameSubscription = previous?.subscription.endpoint === subscription.endpoint &&
+      previous.subscription.keys.auth === subscription.keys.auth &&
+      previous.subscription.keys.p256dh === subscription.keys.p256dh;
+    // Confirm new subscriptions and explicit opt-ins before reporting a connection.
+    if (!sameSubscription || data.test === true) {
+      await sendPush(subscription, reminderPayload(new Date(), true, data.kind === 'evening' ? 'evening' : 'gym'));
     }
-    await saveDevice(path, subscription);
-    return response({ enabled: true });
+    if (!sameSubscription || previous.preferences?.gym !== preferences.gym ||
+        previous.preferences?.evening !== preferences.evening) {
+      await saveDevice(path, subscription, preferences);
+    }
+    return response({ enabled: true, preferences });
   } catch (error) {
     console.error('Push registration failed', { status: error.statusCode || 'internal' });
     return response({ error: 'Reminder connection failed. Please try again.' }, 503);

@@ -1,17 +1,22 @@
 window.MarineReminders = (() => {
-  const TOKEN_KEY = 'marine_push_device_v1';
-  const ENABLED_KEY = 'marine_push_enabled_v1';
-  let serviceURL = '', publicKey = '', busy = false;
+  const tokenKey = 'marine_push_device_v1';
+  const gymKey = 'marine_push_enabled_v1';
+  const eveningKey = 'marine_push_evening_v1';
   const status = text => { document.getElementById('gymReminderStatus').textContent = text; };
-  const button = () => document.getElementById('gymReminderToggle');
+  const buttons = () => document.querySelectorAll('[data-reminder-kind]');
+  let serviceURL = '', publicKey = '', busy = false;
 
   function token() {
-    let value = localStorage.getItem(TOKEN_KEY);
+    let value = localStorage.getItem(tokenKey);
     if (!value) {
       value = Array.from(crypto.getRandomValues(new Uint8Array(32)), n => n.toString(16).padStart(2, '0')).join('');
-      localStorage.setItem(TOKEN_KEY, value);
+      localStorage.setItem(tokenKey, value);
     }
     return value;
+  }
+
+  function preferences() {
+    return { gym: localStorage.getItem(gymKey) === 'true', evening: localStorage.getItem(eveningKey) === 'true' };
   }
 
   function keyBytes(value) {
@@ -29,80 +34,86 @@ window.MarineReminders = (() => {
     return result;
   }
 
-  function showEnabled(enabled) {
-    button().textContent = enabled ? 'Turn off gym reminder' : 'Enable 4 p.m. reminder';
-    button().dataset.enabled = String(enabled);
-    status(enabled ? 'Connected for a daily 4 p.m. Central reminder. Tap the notification for your goblin video.' : 'Gym reminder is off.');
+  function render(active) {
+    for (const button of buttons()) {
+      const kind = button.dataset.reminderKind;
+      const time = kind === 'gym' ? '4 p.m. gym' : '8:30 p.m. evening';
+      button.textContent = (active[kind] ? 'Turn off ' : 'Enable ') + time + ' reminder';
+      button.hidden = false;
+    }
+    status('Times are Central. Choose which reminders you want.');
   }
 
-  async function toggle() {
-    if (busy) return;
-    busy = true; button().disabled = true;
+  async function toggle(kind = 'gym') {
+    if (busy || !['gym', 'evening'].includes(kind)) return;
+    busy = true;
+    buttons().forEach(button => { button.disabled = true; });
     let subscription, created = false;
     try {
-      const enabled = button().dataset.enabled === 'true';
-      // Request iPhone permission directly from this button's user gesture.
-      if (!enabled && await Notification.requestPermission() !== 'granted') {
-        throw new Error('Notifications were not allowed. Enable them in iPhone Settings to receive reminders.');
+      const next = preferences();
+      next[kind] = !next[kind];
+      if (next[kind] && await Notification.requestPermission() !== 'granted') {
+        throw new Error('Allow notifications in iPhone Settings to receive reminders.');
       }
       const registration = await navigator.serviceWorker.ready;
       subscription = await registration.pushManager.getSubscription();
-      if (enabled) {
+      if (!next.gym && !next.evening) {
         await request('DELETE', { token: token() });
-        if (subscription) await subscription.unsubscribe();
-        localStorage.removeItem(ENABLED_KEY);
-        showEnabled(false);
+        // Delivery stops when the server record is removed. Clear the local subscription when possible.
+        if (subscription) await subscription.unsubscribe().catch(() => {});
       } else {
         if (!subscription) {
           subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(publicKey) });
           created = true;
         }
-        status('Connecting your reminder…');
-        await request('POST', { token: token(), subscription: subscription.toJSON(), test: true });
-        localStorage.setItem(ENABLED_KEY, 'true');
-        showEnabled(true);
+        status('Updating reminders…');
+        await request('POST', { token: token(), subscription: subscription.toJSON(), preferences: next, test: next[kind], kind });
       }
+      localStorage.setItem(gymKey, String(next.gym));
+      localStorage.setItem(eveningKey, String(next.evening));
+      render(next);
     } catch (error) {
       if (created) await subscription?.unsubscribe().catch(() => {});
       status(error.message || 'Reminder setup failed. Try again.');
-    } finally { busy = false; button().disabled = false; }
+    } finally {
+      busy = false;
+      buttons().forEach(button => { button.disabled = false; });
+    }
   }
 
   async function init() {
-    if (!document.getElementById('mcJourney')) return;
+    const journey = document.getElementById('mcJourney');
+    if (!journey) return;
     const section = document.createElement('details');
-    section.innerHTML = '<summary>Gym reminder</summary><p id="gymReminderStatus" class="small" role="status">Checking reminder connection…</p><button id="gymReminderToggle" class="secondary" type="button" hidden>Enable 4 p.m. reminder</button>';
-    document.getElementById('mcJourney').append(section);
-    button().onclick = toggle;
+    section.innerHTML = '<summary>Gym &amp; evening reminders</summary><p id="gymReminderStatus" class="small" role="status">Checking reminder connection…</p><button class="secondary" data-reminder-kind="gym" type="button" hidden></button><button class="secondary" data-reminder-kind="evening" type="button" hidden></button>';
+    journey.append(section);
+    buttons().forEach(button => { button.onclick = () => toggle(button.dataset.reminderKind); });
     try {
       const configResponse = await fetch('./reminder-config.json', { cache: 'no-store' });
-      if (!configResponse.ok) throw new Error('Reminder service setup is pending. Your temporary ChatGPT reminder remains active.');
+      if (!configResponse.ok) throw new Error('Reminder setup is pending.');
       const config = await configResponse.json();
-      if (!config.serviceURL) throw new Error('Reminder service setup is pending. Your temporary ChatGPT reminder remains active.');
+      if (!config.serviceURL) throw new Error('Reminder setup is pending.');
       const url = new URL(config.serviceURL);
       if (url.protocol !== 'https:' || url.pathname !== '/' || url.username || url.password || url.search || url.hash) {
         throw new Error('Reminder service configuration needs repair.');
       }
       serviceURL = url.origin;
-      if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+      if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window) ||
+          (/iPhone|iPad|iPod/.test(navigator.userAgent) && !(navigator.standalone || matchMedia('(display-mode: standalone)').matches))) {
         throw new Error('Open Marine Comeback from your Home Screen to enable notifications.');
-      }
-      if (/iPhone|iPad|iPod/.test(navigator.userAgent) && !(navigator.standalone || matchMedia('(display-mode: standalone)').matches)) {
-        throw new Error('Open Marine Comeback using your existing Home Screen icon to enable notifications.');
       }
       const response = await fetch(serviceURL + '/api/push', { cache: 'no-store', signal: AbortSignal.timeout(10000) });
       if (!response.ok) throw new Error('Reminder service could not be reached.');
       const info = await response.json();
-      if (!info.ready || !info.publicKey) throw new Error('Reminder service setup is pending. Your temporary ChatGPT reminder remains active.');
+      if (!info.ready || !info.publicKey) throw new Error('Reminder setup is pending.');
       publicKey = info.publicKey;
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.getSubscription();
-      if (Notification.permission === 'granted' && subscription && localStorage.getItem(ENABLED_KEY)) {
-        // Re-register to repair a lost server record without sending another confirmation each launch.
-        await request('POST', { token: token(), subscription: subscription.toJSON() });
-        showEnabled(true);
-      } else showEnabled(false);
-      button().hidden = false;
+      const active = preferences();
+      if (Notification.permission === 'granted' && subscription && (active.gym || active.evening)) {
+        await request('POST', { token: token(), subscription: subscription.toJSON(), preferences: active, kind: active.gym ? 'gym' : 'evening' });
+      }
+      render(active);
     } catch (error) { status(error.message || 'Reminder service could not be reached.'); }
   }
 

@@ -1,9 +1,10 @@
-const CACHE_NAME="marine-comeback-reminders-v3";
+const CACHE_NAME="marine-comeback-evening-v4";
 const APP_URL=new URL("./index.html",self.registration.scope).href;
 const CUES_URL=new URL("./run-cues.mp3",self.registration.scope).href;
+const OFFLINE_ASSETS=[CUES_URL,...["evening.js","evening.css"].map(path=>new URL(path,self.registration.scope).href)];
 self.addEventListener("install",event=>{
   event.waitUntil(caches.open(CACHE_NAME).then(async cache=>{
-    await cache.addAll([APP_URL,CUES_URL].map(url=>new Request(url,{cache:"reload"})));
+    await cache.addAll([APP_URL,...OFFLINE_ASSETS].map(url=>new Request(url,{cache:"reload"})));
     await self.skipWaiting();
   }));
 });
@@ -16,22 +17,23 @@ self.addEventListener('push', event => {
     icon: new URL('./icons/icon-192.png', self.registration.scope).href,
     badge: new URL('./icons/icon-192.png', self.registration.scope).href,
     tag: typeof payload.tag === 'string' ? payload.tag : 'marine-gym-reminder',
-    data: { type: 'marine-gym-reminder' }
+    data: { type: payload.type === 'marine-evening-reminder' ? 'marine-evening-reminder' : 'marine-gym-reminder' }
   }));
 });
 
 self.addEventListener('notificationclick', event => {
   event.notification.close();
-  if (event.notification.data?.type !== 'marine-gym-reminder') return;
+  const type = event.notification.data?.type;
+  if (!['marine-gym-reminder', 'marine-evening-reminder'].includes(type)) return;
   event.waitUntil((async () => {
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const client = windows.find(window => window.url.startsWith(self.registration.scope));
     if (client) {
       await client.focus();
-      client.postMessage({ type: 'marine-gym-reminder' });
+      client.postMessage({ type });
       return;
     }
-    const target = new URL('./?mission=departure', self.registration.scope);
+    const target = new URL(type === 'marine-evening-reminder' ? './?mission=evening' : './?mission=departure', self.registration.scope);
     await self.clients.openWindow(target.href);
   })());
 });
@@ -45,8 +47,8 @@ self.addEventListener("activate",event=>{
 self.addEventListener("fetch",event=>{
   const url=new URL(event.request.url);
   if(url.origin!==self.location.origin||event.request.method!=="GET")return;
-  if(url.href===CUES_URL){
-    event.respondWith(caches.open(CACHE_NAME).then(async cache=>await cache.match(CUES_URL)||fetch(event.request)));
+  if(OFFLINE_ASSETS.includes(url.href)){
+    event.respondWith(caches.open(CACHE_NAME).then(async cache=>await cache.match(url.href)||fetch(event.request)));
     return;
   }
   if(event.request.mode==="navigate"){

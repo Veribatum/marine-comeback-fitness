@@ -1806,6 +1806,7 @@ section:has(button[onclick*="saveDailyWithFeedback"]){
 </style>
 
 <!-- Legacy worker migration guard: src="phase2.js" is retired; use the built-in MC2 interface. -->
+<link rel="stylesheet" href="./evening.css">
 </head>
 <body>
 
@@ -7997,6 +7998,18 @@ window.MarineJourney=(()=>{
      }
      if((e.restDay||e.recovery)&&!s.awards[k+":recovery"]&&!s.awards[k+":work"]){s.awards[k+":recovery"]={xp:20,label:"Recovery recorded"};added+=k===today?20:0;}
    }
+   let eveningDays={};
+   try{eveningDays=JSON.parse(localStorage.getItem("marine_evening_v1")||"{}").days||{}}catch{}
+   for(const [date,log] of Object.entries(eveningDays)){
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date>today)continue;
+     for(const [kind,complete,xp,label] of [
+       ["reading",log?.reading,20,"Ten minutes of reading"],
+       ["journal",log?.journal?.answers?.some(Boolean),10,"Journal entry saved"]
+     ]){
+       const awardKey=date+":"+kind;
+       if(complete&&!s.awards[awardKey]){s.awards[awardKey]={xp,label};added+=date===today?xp:0}
+     }
+   }
    write(s);return{state:s,added,xp:Object.values(s.awards).reduce((sum,a)=>sum+(Number(a.xp)||0),0)};
  }
  function render(celebrate=false){
@@ -8087,6 +8100,7 @@ window.MarineJourney=(()=>{
 })();
 </script>
 
+<script src="./evening.js" defer></script>
 <script src="./reminders.js" defer></script>
 </body>
 </html>

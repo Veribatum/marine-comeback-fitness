@@ -69,3 +69,26 @@ test('subscription endpoint rejects foreign origins and malformed requests befor
   }));
   assert.equal(malformed.status, 400);
 });
+
+test('evening delivery goes only to opted-in devices and opens the evening screen', async () => {
+  const devices = {
+    'devices/old.json': { subscription: { endpoint: 'legacy' } },
+    'devices/gym.json': { subscription: { endpoint: 'gym' }, preferences: { gym: true, evening: false } },
+    'devices/evening.json': { subscription: { endpoint: 'evening' }, preferences: { gym: false, evening: true } }
+  };
+  const sent = [];
+  const storage = {
+    list: async () => ({ blobs: Object.keys(devices).map(pathname => ({ pathname })), hasMore: false }),
+    readDevice: async path => devices[path],
+    put: async () => {},
+    del: async () => {}
+  };
+  const send = async (subscription, payload) => sent.push({ endpoint: subscription.endpoint, payload });
+  await sendDaily(new Date('2026-11-11T02:30:00Z'), storage, send, 'evening');
+  assert.deepEqual(sent.map(entry => entry.endpoint), ['evening']);
+  assert.equal(sent[0].payload.type, 'marine-evening-reminder');
+  assert.equal(new URL(sent[0].payload.url).search, '?mission=evening');
+  sent.length = 0;
+  await sendDaily(new Date('2026-11-10T22:00:00Z'), storage, send);
+  assert.deepEqual(sent.map(entry => entry.endpoint), ['legacy', 'gym']);
+});
