@@ -16,7 +16,7 @@
       "function": "api/daily"
     },
     "marine-evening-reminder": {
-      "schedule": "30 20 * * *",
+      "schedule": "30 21 * * *",
       "timezone": "America/Chicago",
       "function": "api/daily"
     }

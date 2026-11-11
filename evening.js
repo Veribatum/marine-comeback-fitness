@@ -136,6 +136,7 @@
         <p id="mcEveningMark" class="small"></p>
         <p id="mcEveningClock" aria-label="Reading timer">10:00</p>
         <button type="button" id="mcEveningStart">Read for 10 minutes</button>
+        <p class="small"><a href="https://mind-expansion.jamean-berry.chatgpt.site" target="_blank" rel="noopener noreferrer">Open Mind Expansion</a></p>
         <label for="mcEveningCheckpoint">Where did you leave off? (optional)</label>
         <input id="mcEveningCheckpoint" type="text" maxlength="160" placeholder="Book, chapter, or page">
         <button type="button" id="mcEveningLog" hidden>Log reading</button>

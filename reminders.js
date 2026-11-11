@@ -37,7 +37,7 @@ window.MarineReminders = (() => {
   function render(active) {
     for (const button of buttons()) {
       const kind = button.dataset.reminderKind;
-      const time = kind === 'gym' ? '4 p.m. gym' : '8:30 p.m. evening';
+      const time = kind === 'gym' ? '4 p.m. gym' : '9:30 p.m. evening';
       button.textContent = (active[kind] ? 'Turn off ' : 'Enable ') + time + ' reminder';
       button.hidden = false;
     }
