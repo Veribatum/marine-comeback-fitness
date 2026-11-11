@@ -1,4 +1,4 @@
-const CACHE_NAME="marine-comeback-run-v2";
+const CACHE_NAME="marine-comeback-reminders-v3";
 const APP_URL=new URL("./index.html",self.registration.scope).href;
 const CUES_URL=new URL("./run-cues.mp3",self.registration.scope).href;
 self.addEventListener("install",event=>{
@@ -6,6 +6,34 @@ self.addEventListener("install",event=>{
     await cache.addAll([APP_URL,CUES_URL].map(url=>new Request(url,{cache:"reload"})));
     await self.skipWaiting();
   }));
+});
+
+self.addEventListener('push', event => {
+  let payload = {};
+  try { payload = event.data?.json() || {}; } catch {}
+  event.waitUntil(self.registration.showNotification('Marine Comeback', {
+    body: typeof payload.body === 'string' ? payload.body.slice(0,240) : 'Marine, your goblin pep talk is ready. Time for the gym.',
+    icon: new URL('./icons/icon-192.png', self.registration.scope).href,
+    badge: new URL('./icons/icon-192.png', self.registration.scope).href,
+    tag: typeof payload.tag === 'string' ? payload.tag : 'marine-gym-reminder',
+    data: { type: 'marine-gym-reminder' }
+  }));
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  if (event.notification.data?.type !== 'marine-gym-reminder') return;
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const client = windows.find(window => window.url.startsWith(self.registration.scope));
+    if (client) {
+      await client.focus();
+      client.postMessage({ type: 'marine-gym-reminder' });
+      return;
+    }
+    const target = new URL('./?mission=departure', self.registration.scope);
+    await self.clients.openWindow(target.href);
+  })());
 });
 self.addEventListener("activate",event=>{
   event.waitUntil((async()=>{
@@ -35,3 +63,4 @@ self.addEventListener("fetch",event=>{
     })());
   }
 });
+
