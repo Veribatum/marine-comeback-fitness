@@ -7585,9 +7585,45 @@ function wm(){
 function home(){if(window.MarineGPS?.busy())return;head("FITNESS","Choose today's mission.");c().innerHTML='<div class="mc2grid"><button class="yellow" onclick="MC2.run()">RUN</button><button onclick="MC2.gym()">GYM DAY</button></div>';show()}
 function run(){
   show();
-  if(c().querySelector("#gpsPanel"))return;
-  head("RUN","");c().textContent="";
-  if(window.MarineGPS)MarineGPS.mount();else c().textContent="GPS tracker unavailable. Refresh the page.";
+  head("RUN","Import your MapMyRun screenshot. Review the numbers before saving.");
+  c().innerHTML='<div class="mc2ex"><h3>MAPMYRUN SCREENSHOT</h3><p class="small">Upload a screenshot of your completed run. The app will try to read distance and duration. Confirm the values before saving.</p><input id="mmrShot" type="file" accept="image/*"><p id="mmrStatus" class="small" aria-live="polite">No screenshot selected.</p><img id="mmrPreview" alt="Selected MapMyRun screenshot" style="display:none;max-width:100%;max-height:250px;object-fit:contain"><label>Run date<input id="mmrDate" type="date"></label><label>Distance (miles)<input id="mmrDistance" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="e.g. 2.10"></label><label>Duration (MM:SS or HH:MM:SS)<input id="mmrTime" type="text" inputmode="numeric" placeholder="26:28"></label><label>Run notes<textarea id="mmrNotes" rows="4" placeholder="Nonstop distance, stops, how your legs felt..."></textarea></label><button class="yellow" id="mmrSave" type="button">SAVE VERIFIED RUN</button></div>';
+  document.getElementById("mmrDate").value=dk();
+  document.getElementById("mmrShot").addEventListener("change",async e=>{
+    const file=e.target.files?.[0],status=document.getElementById("mmrStatus"),preview=document.getElementById("mmrPreview");
+    if(!file)return;
+    const url=URL.createObjectURL(file);preview.src=url;preview.style.display="block";preview.onload=()=>URL.revokeObjectURL(url);
+    status.textContent="Reading screenshot…";
+    try{
+      if(!window.Tesseract){
+        await new Promise((resolve,reject)=>{const script=document.createElement("script");script.src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";script.onload=resolve;script.onerror=()=>reject(new Error("OCR library unavailable"));document.head.appendChild(script)});
+      }
+      const result=await window.Tesseract.recognize(file,"eng");
+      const raw=result.data.text||"",lines=raw.split(/\n/).map(v=>v.trim()).filter(Boolean);
+      const matchNear=(label,pattern)=>{
+        for(let i=0;i<lines.length;i++)if(label.test(lines[i])){
+          const own=lines[i].replace(label,""),next=lines[i+1]||"";
+          const m=own.match(pattern)||next.match(pattern);if(m)return m[0];
+        }
+        return "";
+      };
+      let distance=matchNear(/(?:distance|miles|mi\b)/i,/\b\d{1,2}[.,]\d{1,2}\b/);
+      let duration=matchNear(/(?:duration|moving time|elapsed time|time)\b/i,/\b(?:\d{1,2}:)?\d{1,2}:\d{2}\b/);
+      if(!distance)distance=(raw.match(/\b\d{1,2}[.,]\d{2}\s*(?:mi|miles)\b/i)||[])[0]?.match(/\d+[.,]\d+/)?.[0]||"";
+      if(!duration)duration=(raw.match(/\b\d{1,2}:\d{2}(?::\d{2})?\b/)||[])[0]||"";
+      if(distance)document.getElementById("mmrDistance").value=distance.replace(",",".");
+      if(duration)document.getElementById("mmrTime").value=duration;
+      status.textContent=(distance&&duration?"Values extracted. ":"Some values could not be read. ")+"Verify distance and duration against the screenshot before saving.";
+    }catch(err){status.textContent="Automatic reading unavailable. Enter the distance and duration from the screenshot manually; you can still save the run.";console.warn("MapMyRun OCR:",err)}
+  });
+  document.getElementById("mmrSave").addEventListener("click",()=>{
+    const distance=Number(document.getElementById("mmrDistance").value),time=document.getElementById("mmrTime").value.trim(),seconds=sec(time),dateText=document.getElementById("mmrDate").value,notes=document.getElementById("mmrNotes").value.trim();
+    if(!Number.isFinite(distance)||distance<=0||distance>200||!seconds||!/^\d{4}-\d{2}-\d{2}$/.test(dateText)){note("Run import","Enter a valid date, distance and duration before saving.");return}
+    const date=new Date(dateText+"T12:00:00");
+    if(Number.isNaN(date.getTime())||dk(date)!==dateText){note("Run import","Choose a valid date.");return}
+    const r={distance,time:ft(seconds),timeSeconds:seconds,pace:ft(seconds/distance)+"/mi",notes,completedAt:new Date().toISOString(),source:"MapMyRun screenshot",mileSplits:[]};
+    try{saveRun(r,date);refreshRunStats();if(window.MarineJourney)MarineJourney.render(true);if(typeof update==="function")update();close();note("Run saved","MapMyRun results and notes saved.");}
+    catch(error){console.error(error);note("Run import","Save failed. Your entries are still on screen.")}
+  });
 }
 function saveRun(r,date){
   const d=readLogs(),k=dk(date),e=d[k]||{};
