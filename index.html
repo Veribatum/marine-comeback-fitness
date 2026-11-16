@@ -7540,7 +7540,7 @@ const dk=(d=new Date())=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"
 const c=()=>document.getElementById("mc2C"),o=()=>document.getElementById("mc2O");
 function head(t,s){document.getElementById("mc2T").textContent=t;document.getElementById("mc2S").textContent=s||"App remembers. Coach decides."}
 function show(){o().classList.add("on")}
-function close(){if(window.MarineGPS?.busy())return;o().classList.remove("on");W=null}
+function close(){o().classList.remove("on");W=null}
 function note(a,b){try{if(typeof mcToast==="function")mcToast(a,b);else alert(a+": "+b)}catch(e){}}
 function sec(v){let a=String(v||"").trim().split(":").map(Number);if(![2,3].includes(a.length)||a.some(x=>!Number.isFinite(x)||x<0))return 0;if(a.length===2&&a[1]>=60||a.length===3&&(a[1]>=60||a[2]>=60))return 0;return a.length===2?a[0]*60+a[1]:a[0]*3600+a[1]*60+a[2]}
 function ft(x){x=Math.round(x);let h=Math.floor(x/3600),m=Math.floor(x%3600/60),s=x%60;return(h?String(h).padStart(2,"0")+":":"")+String(m).padStart(h?2:1,"0")+":"+String(s).padStart(2,"0")}
@@ -7582,55 +7582,20 @@ function wm(){
     const e=document.getElementById(id);if(e)e.textContent=value;
   }
 }
-function home(){if(window.MarineGPS?.busy())return;head("FITNESS","Choose today's mission.");c().innerHTML='<div class="mc2grid"><button class="yellow" onclick="MC2.run()">RUN</button><button onclick="MC2.gym()">GYM DAY</button></div>';show()}
+function home(){head("FITNESS","Choose today's mission.");c().innerHTML='<div class="mc2grid"><button class="yellow" onclick="MC2.run()">RUN</button><button onclick="MC2.gym()">GYM DAY</button></div>';show()}
 function run(){
   show();
-  head("RUN","Import your MapMyRun screenshot. Review the numbers before saving.");
-  c().innerHTML='<div class="mc2ex"><h3>MAPMYRUN SCREENSHOT</h3><p class="small">Upload a screenshot of your completed run. The app will try to read distance and duration. Confirm the values before saving.</p><input id="mmrShot" type="file" accept="image/*"><p id="mmrStatus" class="small" aria-live="polite">No screenshot selected.</p><img id="mmrPreview" alt="Selected MapMyRun screenshot" style="display:none;max-width:100%;max-height:250px;object-fit:contain"><label>Run date<input id="mmrDate" type="date"></label><label>Distance (miles)<input id="mmrDistance" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="e.g. 2.10"></label><label>Duration (MM:SS or HH:MM:SS)<input id="mmrTime" type="text" inputmode="numeric" placeholder="26:28"></label><label>Run notes<textarea id="mmrNotes" rows="4" placeholder="Nonstop distance, stops, how your legs felt..."></textarea></label><button class="yellow" id="mmrSave" type="button">SAVE VERIFIED RUN</button></div>';
-  document.getElementById("mmrDate").value=dk();
-  document.getElementById("mmrShot").addEventListener("change",async e=>{
-    const file=e.target.files?.[0],status=document.getElementById("mmrStatus"),preview=document.getElementById("mmrPreview");
-    if(!file)return;
-    const url=URL.createObjectURL(file);preview.src=url;preview.style.display="block";preview.onload=()=>URL.revokeObjectURL(url);
-    status.textContent="Reading screenshot…";
-    try{
-      if(!window.Tesseract){
-        await new Promise((resolve,reject)=>{const script=document.createElement("script");script.src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";script.onload=resolve;script.onerror=()=>reject(new Error("OCR library unavailable"));document.head.appendChild(script)});
-      }
-      const result=await window.Tesseract.recognize(file,"eng");
-      const raw=result.data.text||"",lines=raw.split(/\n/).map(v=>v.trim()).filter(Boolean);
-      const matchNear=(label,pattern)=>{
-        for(let i=0;i<lines.length;i++)if(label.test(lines[i])){
-          const own=lines[i].replace(label,""),next=lines[i+1]||"";
-          const m=own.match(pattern)||next.match(pattern);if(m)return m[0];
-        }
-        return "";
-      };
-      let distance=matchNear(/(?:distance|miles|mi\b)/i,/\b\d{1,2}[.,]\d{1,2}\b/);
-      let duration=matchNear(/(?:duration|moving time|elapsed time|time)\b/i,/\b(?:\d{1,2}:)?\d{1,2}:\d{2}\b/);
-      if(!distance)distance=(raw.match(/\b\d{1,2}[.,]\d{2}\s*(?:mi|miles)\b/i)||[])[0]?.match(/\d+[.,]\d+/)?.[0]||"";
-      if(!duration)duration=(raw.match(/\b\d{1,2}:\d{2}(?::\d{2})?\b/)||[])[0]||"";
-      if(distance)document.getElementById("mmrDistance").value=distance.replace(",",".");
-      if(duration)document.getElementById("mmrTime").value=duration;
-      status.textContent=(distance&&duration?"Values extracted. ":"Some values could not be read. ")+"Verify distance and duration against the screenshot before saving.";
-    }catch(err){status.textContent="Automatic reading unavailable. Enter the distance and duration from the screenshot manually; you can still save the run.";console.warn("MapMyRun OCR:",err)}
-  });
-  document.getElementById("mmrSave").addEventListener("click",()=>{
-    const distance=Number(document.getElementById("mmrDistance").value),time=document.getElementById("mmrTime").value.trim(),seconds=sec(time),dateText=document.getElementById("mmrDate").value,notes=document.getElementById("mmrNotes").value.trim();
-    if(!Number.isFinite(distance)||distance<=0||distance>200||!seconds||!/^\d{4}-\d{2}-\d{2}$/.test(dateText)){note("Run import","Enter a valid date, distance and duration before saving.");return}
-    const date=new Date(dateText+"T12:00:00");
-    if(Number.isNaN(date.getTime())||dk(date)!==dateText){note("Run import","Choose a valid date.");return}
-    const r={distance,time:ft(seconds),timeSeconds:seconds,pace:ft(seconds/distance)+"/mi",notes,completedAt:new Date().toISOString(),source:"MapMyRun screenshot",mileSplits:[]};
-    try{saveRun(r,date);refreshRunStats();if(window.MarineJourney)MarineJourney.render(true);if(typeof update==="function")update();close();note("Run saved","MapMyRun results and notes saved.");}
-    catch(error){console.error(error);note("Run import","Save failed. Your entries are still on screen.")}
-  });
+  if(c().querySelector("#runImport"))return;
+  head("RUN","Choose a screenshot of your completed run.");
+  window.MarineRunImport.mount();
 }
 function saveRun(r,date){
   const d=readLogs(),k=dk(date),e=d[k]||{};
-  if(r.nativeRunID&&Object.values(d).some(entry=>entry&&sessions(entry).some(saved=>saved.nativeRunID===r.nativeRunID)))return;
+  if(r.screenshotHash&&Object.values(d).some(entry=>entry&&sessions(entry).some(saved=>saved.screenshotHash===r.screenshotHash)))return false;
   recordRun(e,r);
   e.workout=true;e.workoutType="RUN";e.cardio=true;d[k]=e;
   S(d);
+  return true;
 }
 function recentRuns(){
   return Object.entries(D()).filter(([key,e])=>e&&/^\d{4}-\d{2}-\d{2}$/.test(key))
@@ -7647,8 +7612,8 @@ function saveRunNotes({key,index,run},notes){
   S(d);
 }
 function last(n){let d=D(),ks=Object.keys(d).sort().reverse();for(let k of ks){let g=d[k]&&d[k].gymSession,x=g&&g.exercises&&g.exercises.find(v=>v.name===n);if(x)return x}return null}
-function gym(){if(window.MarineGPS?.busy())return;head("GYM DAY","Choose Push or Pull.");c().innerHTML='<div class="mc2grid"><button class="yellow" onclick="MC2.work(\'A\')">WORKOUT A — PUSH</button><button onclick="MC2.work(\'B\')">WORKOUT B — PULL</button></div>';show()}
-function work(k){if(window.MarineGPS?.busy())return;W=k;let p=P[W];head(p.n,"Log the sets you did. Leave the rest blank.");let x='<div class="mc2grid"><div class="mc2opt"><label>Warm-up <span class="small">5 min • 2.5 • incline 15</span><input id="wU" type="checkbox" checked></label></div><div class="mc2opt"><label>Cooldown / Stretch<input id="cD" type="checkbox"></label></div><div class="mc2opt"><label>Red-light therapy<input id="rL" type="checkbox"></label></div><div class="mc2opt"><label>Massage chair<input id="mC" type="checkbox"></label></div></div>';
+function gym(){head("GYM DAY","Choose Push or Pull.");c().innerHTML='<div class="mc2grid"><button class="yellow" onclick="MC2.work(\'A\')">WORKOUT A — PUSH</button><button onclick="MC2.work(\'B\')">WORKOUT B — PULL</button></div>';show()}
+function work(k){W=k;let p=P[W];head(p.n,"Log the sets you did. Leave the rest blank.");let x='<div class="mc2grid"><div class="mc2opt"><label>Warm-up <span class="small">5 min • 2.5 • incline 15</span><input id="wU" type="checkbox" checked></label></div><div class="mc2opt"><label>Cooldown / Stretch<input id="cD" type="checkbox"></label></div><div class="mc2opt"><label>Red-light therapy<input id="rL" type="checkbox"></label></div><div class="mc2opt"><label>Massage chair<input id="mC" type="checkbox"></label></div></div>';
 p.e.forEach((v,i)=>{let q=last(v[0]),pv=q?q.sets.map(s=>s.weight+"×"+s.reps).join(" | "):"No previous session";x+='<div class="mc2ex"><h3>'+v[0]+'</h3><div class="small">Target: '+v[1]+' × '+v[2]+'</div><div class="mc2prev">Previous: '+pv+'</div>';for(let j=0;j<v[1];j++){let wt=q?.sets.find((set,index)=>(set.set??index+1)===j+1)?.weight??"";x+='<div class="mc2set"><b>Set '+(j+1)+'</b><input class="mw" data-e="'+i+'" data-s="'+j+'" type="number" min="0" step=".5" placeholder="Weight" value="'+wt+'"><input class="mr" data-e="'+i+'" data-s="'+j+'" type="number" min="0" step="1" placeholder="Reps"></div>'}x+='</div>'});c().innerHTML=x+'<button class="yellow" onclick="MC2.done()">SAVE WORKOUT</button>'}
 function done(){
   const p=P[W];if(!p)return;
@@ -7690,365 +7655,260 @@ return{home,run,saveRun,saveRunNotes,recentRuns,gym,work,done,close,refreshRunSt
 })();
 </script>
 <style>
-#gpsPanel{background:#101810;border:1px solid #bba55b;border-radius:14px;padding:14px;margin-top:12px}#gpsPanel .gpsMetric{font-size:1.7rem;font-weight:800;color:#e8cf6b}#gpsPanel .gpsGrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}#gpsPanel button{margin-top:8px}#gpsPanel .gpsStatus{font-size:.85rem;opacity:.85}#gpsPanel .gpsStatus:empty{display:none}#gpsPanel .gpsVoice{display:flex;align-items:center;gap:8px;margin:8px 0}#gpsPanel #gpsVoice{width:20px;height:20px;margin:0}#gpsPanel #gpsHistory{margin-top:12px}#gpsPanel summary{cursor:pointer;color:var(--gold)}
+#runImport{background:#101810;border:1px solid #bba55b;border-radius:14px;padding:14px;margin-top:12px}
+#runImport button,#runImport details{margin-top:10px}
+#runImport summary{cursor:pointer;color:var(--gold)}
+#runImport .runStatus:empty{display:none}
+#runImport .runFields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+#runImport input,#runImport select{min-width:0;max-width:100%}
+#runImport label{display:block}
 </style>
-<script id="marine-gps-v1">
+<script id="marine-run-import">
 (function(){
-const MILE=1609.344, MAX_GAP=20000, $=id=>document.getElementById(id);
-const rad=x=>x*Math.PI/180;
-const cues={"0":[0.0,0.46027],"1":[0.46027,0.48744],"2":[0.94771,0.37211],"3":[1.31982,0.49306],"4":[1.81288,0.42612],"5":[2.239,0.47302],"6":[2.71202,0.44],"7":[3.15202,0.52068],"8":[3.6727,0.34794],"9":[4.02063,0.49351],"10":[4.51415,0.44789],"11":[4.96204,0.68186],"12":[5.6439,0.66376],"13":[6.30766,0.57655],"14":[6.88422,0.67392],"15":[7.55814,0.6058],"16":[8.16395,0.7068],"17":[8.87075,0.79075],"18":[9.6615,0.60943],"19":[10.27093,0.74458],"20":[11.01551,0.5537],"21":[11.56921,0.75229],"22":[12.3215,0.83982],"23":[13.16132,0.87832],"24":[14.03964,0.779],"25":[14.81864,0.86349],"26":[15.68213,0.85324],"27":[16.53537,0.93533],"28":[17.4707,0.74689],"29":[18.2176,0.9142],"30":[19.13179,0.36812],"31":[19.49991,0.71955],"32":[20.21946,0.73342],"33":[20.95288,0.79057],"34":[21.74345,0.69179],"35":[22.43524,0.7712],"36":[23.20644,0.76327],"37":[23.96971,0.821],"38":[24.7907,0.6073],"39":[25.398,0.81787],"40":[26.21587,0.48463],"41":[26.7005,0.77565],"42":[27.47615,0.84385],"43":[28.32,0.90367],"44":[29.22367,0.80485],"45":[30.02853,0.89111],"46":[30.91964,0.87388],"47":[31.79351,0.92077],"48":[32.71429,0.76717],"49":[33.48145,0.93492],"50":[34.41637,0.48998],"51":[34.90635,0.76689],"52":[35.67324,0.83288],"53":[36.50612,0.8927],"54":[37.39882,0.79388],"55":[38.1927,0.88014],"56":[39.07283,0.86286],"57":[39.93569,0.90975],"58":[40.84544,0.82327],"59":[41.66871,0.92395],"mile":[42.59265,0.56218],"half":[43.15483,0.94567],"turn":[44.1005,0.98676],"split":[45.08726,0.83973],"total":[45.92698,0.92608],"average":[46.85306,0.93615],"hour":[47.78921,0.54517],"hours":[48.33438,0.57483],"minute":[48.90921,0.36921],"minutes":[49.27841,0.48925],"second":[49.76766,0.60943],"seconds":[50.3771,0.71986],"per":[51.09696,0.79333]};
-let watch=null,tick=null,wakeLock=null,run=null,pending=null,lastStatus="",lastSplit="";
-let audio=null,voiceBuffer=null,voiceLoad=null,playing=[];
-const nativeBridge=window.webkit?.messageHandlers?.marineRun;
-let nativeState=null,nativeOp=false,nativeReading=false,nativeRevision=0;
-const nativeRunning=()=>!!(nativeState&&nativeState.phase!=="idle");
-const busy=()=>nativeBridge?nativeOp||nativeRunning():!!(run?.active||pending);
-function draftKey(id){return "marine_native_run_note:"+id}
-function readDraft(id){
-  try{return localStorage.getItem(draftKey(id))||""}catch{return ""}
+const OCR_URL="https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/tesseract.min.js";
+const MILES_PER_KM=1/1.609344;
+const $=id=>document.getElementById(id);
+let ocrScript;
+
+function localDate(date=new Date()){
+  return [date.getFullYear(),String(date.getMonth()+1).padStart(2,"0"),String(date.getDate()).padStart(2,"0")].join("-");
 }
-function writeDraft(id,notes){
-  try{localStorage.setItem(draftKey(id),notes)}catch{}
+function runDate(value){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(value))return null;
+  const date=new Date(value+"T12:00:00");
+  return Number.isFinite(+date)&&localDate(date)===value&&value<=localDate()?date:null;
 }
-function showNative(state,seed){
-  const previousID=nativeState?.id,previousStatus=nativeState?.status;
-  nativeState=state;
-  if(!$("gpsPanel")&&nativeRunning()){MC2.run();return}
-  if(!$("gpsPanel"))return;
-  if(state.id&&state.id!==previousID){
-    $("gpsNotes").value=seed??readDraft(state.id);
-    if(seed!==undefined)writeDraft(state.id,seed);
-    $("gpsTurn").value=state.turn;
-    $("gpsVoice").checked=state.voice;
+function seconds(value){
+  const match=String(value).trim().match(/^(?:(\d{1,3}):)?(\d{1,3}):([0-5]\d)$/);
+  if(!match||match[1]&&Number(match[2])>=60)return 0;
+  return Number(match[1]||0)*3600+Number(match[2])*60+Number(match[3]);
+}
+function duration(value){
+  const total=Math.round(value);
+  const hours=Math.floor(total/3600),minutes=Math.floor(total%3600/60);
+  return (hours?hours+":"+String(minutes).padStart(2,"0"):minutes)+":"+String(total%60).padStart(2,"0");
+}
+function dateFromText(text){
+  const months="jan feb mar apr may jun jul aug sep oct nov dec".split(" ");
+  const named=text.match(/\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+(\d{1,2}),?\s+(20\d{2})\b/i);
+  const iso=text.match(/\b20\d{2}-\d{2}-\d{2}\b/);
+  const numeric=text.match(/\b(0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01])\/(20\d{2}|\d{2})\b/);
+  const pad=value=>String(value).padStart(2,"0");
+  const key=named?[named[3],pad(months.indexOf(named[1].slice(0,3).toLowerCase())+1),pad(named[2])].join("-"):
+    iso?.[0]||(numeric?[numeric[3].length===2?"20"+numeric[3]:numeric[3],pad(numeric[1]),pad(numeric[2])].join("-"):"");
+  return runDate(key)?key:"";
+}
+function wordRows(tsv){
+  const rows=new Map();
+  for(const line of String(tsv||"").split(/\r?\n/)){
+    const [level,page,block,paragraph,row,,left,top,width,height,,word]=line.split("\t");
+    if(level!=="5"||!word?.trim())continue;
+    const key=[page,block,paragraph,row].join(":");
+    if(!rows.has(key))rows.set(key,[]);
+    rows.get(key).push({word,x:Number(left)+Number(width)/2,y:Number(top)+Number(height)/2,h:Number(height)});
   }
-  if(state.status!==previousStatus&&state.status)status(state.status);
-  ui();
+  return [...rows.values()].map(row=>row.sort((a,b)=>a.x-b.x));
 }
-async function pollNative(){
-  if(!nativeBridge||document.hidden||nativeReading||nativeOp)return;
-  const revision=nativeRevision;
-  nativeReading=true;
-  try{
-    const state=await nativeBridge.postMessage({action:"status"});
-    if(revision===nativeRevision)showNative(state);
-  }catch(error){console.warn(error)}
-  finally{nativeReading=false}
+function closestMetric(labels,values,otherLabels=[]){
+  if(!labels.length)return undefined;
+  const score=(label,value)=>{
+    const h=label.h,dx=Math.abs(label.x-value.x),dy=Math.abs(label.y-value.y);
+    if(dy<=h*.65&&dx<=12*h)return dx+h;
+    if(dx<=3*h&&dy<=7*h)return dy+dx*2;
+    return Infinity;
+  };
+  const nearest=(items,value)=>Math.min(...items.map(label=>score(label,value)));
+  return values.map(value=>({value,score:nearest(labels,value)}))
+    .filter(item=>Number.isFinite(item.score)&&item.score<nearest(otherLabels,item.value))
+    .sort((a,b)=>a.score-b.score)[0]?.value;
 }
-async function nativeCommand(action){
-  if(nativeOp)return;
-  nativeOp=true;nativeRevision++;ui();
-  try{
-    if(action==="start"){
-      const turn=$("gpsTurn").valueAsNumber;
-      const notes=$("gpsNotes").value;
-      const state=await nativeBridge.postMessage({action,turn:Number.isFinite(turn)?turn:0,voice:$("gpsVoice").checked});
-      showNative(state,notes);
-    }else{
-      const state=await nativeBridge.postMessage({action});
-      showNative(state);
-      if(state.record){
-        const record={...state.record,notes:$("gpsNotes").value.trim()};
-        MC2.saveRun(record,new Date(record.completedAt));
-        const saved=await nativeBridge.postMessage({action:"saved",id:record.nativeRunID});
-        try{localStorage.removeItem(draftKey(record.nativeRunID))}catch{}
-        showNative(saved);
-        savedUI(record);
+function readStats({text="",tsv=""}){
+  const clean=text.replace(/[：]/g,":");
+  const distanceLabels=[],timeLabels=[],paceLabels=[],numbers=[],times=[];
+  const km=/^(?:km|kilometers?|kilometres?)$/i;
+  const mi=/^(?:mi|miles?)$/i;
+  for(const row of wordRows(tsv)){
+    row.forEach((item,index)=>{
+      const token=item.word.replace(/[：]/g,":").replace(/^[([]|[)\]:;,]$/g,"");
+      const match=token.match(/^(\d{1,4}(?:[.,]\d{1,3})?|[.,]\d{1,3})(mi|km|miles?)?$/i);
+      const next=row[index+1]?.word.replace(/[()[\].]/g,"")||"";
+      if(/^distance$/i.test(token))distanceLabels.push({...item,unit:km.test(next)?"km":mi.test(next)?"mi":""});
+      if(/^(?:duration|time)$/i.test(token))timeLabels.push(item);
+      if(/^pace$/i.test(token))paceLabels.push(item);
+      if(match){
+        const unit=match[2]||((mi.test(next)||km.test(next))?next:"");
+        numbers.push({...item,number:Number(match[1].replace(",",".")),unit});
       }
-    }
-  }catch(error){
-    console.error(error);
-    status(action==="finish"?"Save could not finish. Tap Finish & Save to retry.":"Could not start GPS. Try again.");
-  }finally{
-    nativeOp=false;ui();
-  }
-}
-function dist(a,b){
-  const dlat=rad(b.latitude-a.latitude),dlon=rad(b.longitude-a.longitude);
-  const q=Math.sin(dlat/2)**2+Math.cos(rad(a.latitude))*Math.cos(rad(b.latitude))*Math.sin(dlon/2)**2;
-  return 12742000*Math.asin(Math.sqrt(Math.min(1,q)));
-}
-function elapsed(){
-  if(!run)return 0;
-  return run.active?(run.start===null?0:Math.max(0,Math.floor((Date.now()-run.start)/1000))):run.seconds;
-}
-function fmt(t){
-  t=Math.max(0,Math.round(t));
-  const hours=Math.floor(t/3600),minutes=Math.floor(t%3600/60),seconds=String(t%60).padStart(2,"0");
-  return hours?hours+":"+String(minutes).padStart(2,"0")+":"+seconds:minutes+":"+seconds;
-}
-function spokenNumber(value){return value<60?[String(value)]:String(value).split("")}
-function spokenTime(t){
-  const seconds=Math.round(t),parts=[];
-  for(const [value,unit] of [[Math.floor(seconds/3600),"hour"],[Math.floor(seconds%3600/60),"minute"],[seconds%60,"second"]]){
-    if(value||(!parts.length&&unit==="second")){
-      parts.push(...spokenNumber(value));
-      parts.push(unit+(value===1?"":"s"));
-    }
-  }
-  return parts;
-}
-function audioType(type){
-  if(navigator.audioSession)navigator.audioSession.type=type;
-}
-function stopCue(){
-  for(const source of playing){source.onended=null;source.stop()}
-  if(playing.length)audioType("ambient");
-  playing=[];
-}
-function prepareVoice(){
-  if(!$("gpsVoice").checked)return;
-  const Context=window.AudioContext||window.webkitAudioContext;
-  if(!Context)return;
-  try{
-    if(!audio){audioType("ambient");audio=new Context()}
-    audio.resume().catch(()=>{});
-    if(!voiceLoad)voiceLoad=fetch("./run-cues.mp3").then(response=>{
-      if(!response.ok)throw new Error("Run audio unavailable");
-      return response.arrayBuffer();
-    }).then(bytes=>audio.decodeAudioData(bytes)).then(buffer=>{voiceBuffer=buffer}).catch(error=>{
-      voiceLoad=null;console.warn(error);
-      if($("gpsVoice")?.checked)$("gpsVoiceLabel").textContent="Spoken splits unavailable. Splits still appear on screen.";
+      if(seconds(token)&&!/^\/|^(?:am|pm)$/i.test(next))times.push({...item,number:seconds(token)});
     });
-  }catch(error){console.warn(error)}
+  }
+  // A distance with an explicit unit is more reliable than a nearby bare number.
+  const labeledDistance=clean.match(/\b(?:distance\s*:?\s*|(?:ran|run|running|walked)\s+)(\d+[.,]?\d*|[.,]\d+)\s*(km|kilomet(?:er|re)s?|mi|miles?)\b/i);
+  const unitLine=clean.match(/^[ \t]*(\d+[.,]?\d*|[.,]\d+)[ \t]*(km|kilomet(?:er|re)s?|mi|miles?)[ \t]*$/im);
+  const qualified=numbers.filter(item=>item.unit);
+  const nearDistance=closestMetric(distanceLabels,qualified);
+  const inlineDistance=labeledDistance||(!nearDistance&&unitLine);
+  const bareDistance=closestMetric(distanceLabels,numbers);
+  const distance=inlineDistance?
+    Number(inlineDistance[1].replace(",","."))*(km.test(inlineDistance[2])?MILES_PER_KM:1):
+    nearDistance?nearDistance.number*(km.test(nearDistance.unit)?MILES_PER_KM:1):
+    bareDistance?bareDistance.number*(km.test(distanceLabels[0]?.unit||"")?MILES_PER_KM:1):null;
+  const inlineTime=clean.match(/\b(?:duration|(?:moving |elapsed |workout |total )?time)[ \t]*:?[ \t]*(\d{1,3}[ \t]*:[ \t]*\d{2}(?:[ \t]*:[ \t]*\d{2})?)(?![ \t]*[:\d]|[ \t]*(?:\/|[ap]\.?m\.?))/i);
+  const time=seconds(inlineTime?.[1]?.replace(/\s/g,""))||closestMetric(timeLabels,times,paceLabels)?.number||0;
+  return {distance:distance>0?Number(distance.toFixed(3)):"",time:time?duration(time):"",date:dateFromText(clean)};
 }
-function speak(words){
-  if(document.hidden||!$("gpsVoice")?.checked||!voiceBuffer||audio?.state!=="running")return;
-  stopCue();
+function loadOCR(){
+  if(window.Tesseract)return Promise.resolve(window.Tesseract);
+  if(!ocrScript)ocrScript=new Promise((resolve,reject)=>{
+    const script=document.createElement("script");
+    script.src=OCR_URL;
+    script.onload=()=>window.Tesseract?resolve(window.Tesseract):reject(new Error("OCR unavailable"));
+    script.onerror=()=>{script.remove();reject(new Error("OCR download failed"))};
+    document.head.append(script);
+  }).catch(error=>{ocrScript=null;throw error});
+  return ocrScript;
+}
+async function scan(file){
+  let worker,timer,expired=false,rejectRead;
+  const failure=new Promise((_,reject)=>{
+    rejectRead=reject;
+    timer=setTimeout(()=>reject(new Error("OCR timed out")),60000);
+  });
   try{
-    audioType("transient");
-    let when=audio.currentTime+.025;
-    for(const word of words){
-      const [offset,duration]=cues[word],source=audio.createBufferSource();
-      source.buffer=voiceBuffer;source.connect(audio.destination);
-      source.start(when,offset,duration);
-      playing.push(source);when+=duration;
-    }
-    playing.at(-1).onended=()=>{playing=[];audioType("ambient")};
-  }catch(error){console.warn(error);stopCue();audioType("ambient")}
-}
-function status(message){
-  lastStatus=message;
-  if($("gpsStatus"))$("gpsStatus").textContent=message;
-}
-function ui(){
-  if(!$("gpsPanel"))return;
-  const mi=((nativeBridge?nativeState?.meters:run?.meters)||0)/MILE;
-  const t=nativeBridge?(nativeState?.seconds||0):elapsed();
-  $("gpsStart").disabled=busy();$("gpsTurn").disabled=busy();
-  $("gpsFinish").disabled=nativeBridge?(nativeOp||!nativeRunning()):!busy();
-  document.querySelector("#mc2O .mc2x").disabled=busy();
-  $("gpsDistance").textContent=mi.toFixed(2)+" mi";
-  $("gpsTime").textContent=fmt(t);
-  $("gpsPace").textContent=mi>.015?fmt(t/mi)+"/mi":"—";
-  $("gpsSplit").textContent=nativeBridge?(nativeState?.split||""):lastSplit;
-}
-async function keepAwake(session){
-  if(!navigator.wakeLock||document.hidden||wakeLock||session.wakePending)return;
-  session.wakePending=true;
-  try{
-    const lock=await navigator.wakeLock.request("screen");
-    if(!session.active||run!==session||document.hidden){await lock.release();return}
-    wakeLock=lock;
-    lock.addEventListener("release",()=>{
-      if(wakeLock===lock)wakeLock=null;
-      if(run===session&&session.active&&!document.hidden){
-        $("gpsHint").textContent="Keep this screen awake while tracking.";
-      }
-    },{once:true});
-    $("gpsHint").textContent="Screen stays awake while tracking. Locking the phone interrupts GPS.";
-  }catch{
-    if(run===session&&session.active)$("gpsHint").textContent="Keep this screen awake while tracking.";
-  }finally{session.wakePending=false}
-}
-function interrupt(){
-  run.anchor=null;run.lastFix=null;
-  if(run.start!==null)run.interrupted=true;
-  stopCue();
-}
-document.addEventListener("visibilitychange",()=>{
-  if(nativeBridge){pollNative();return}
-  if(!run?.active)return;
-  if(document.hidden){interrupt();return}
-  run.visibleSince=Date.now();
-  status(run.interrupted?"Waiting for GPS. Recorded distance may be short.":"Waiting for GPS.");
-  keepAwake(run);ui();
-});
-function got(p){
-  if(!run?.active||document.hidden)return;
-  const {latitude,longitude,accuracy}=p.coords,q={latitude,longitude,time:p.timestamp};
-  if(!Number.isFinite(q.time)||q.time<run.visibleSince||Date.now()-q.time>MAX_GAP)return;
-  if(!Number.isFinite(accuracy)||accuracy>30){
-    if(run.start===null)status("GPS signal is weak. Wait for “GPS tracking” before moving.");
-    return;
+    return await Promise.race([failure,(async()=>{
+      const engine=await loadOCR();
+      if(expired)return;
+      const initialized=await engine.createWorker("eng",1,{errorHandler:rejectRead});
+      if(expired){await initialized.terminate();return}
+      worker=initialized;
+      await worker.setParameters({tessedit_pageseg_mode:"11"});
+      const {data}=await worker.recognize(file,{}, {text:true,tsv:true});
+      return readStats(data);
+    })()]);
+  }finally{
+    expired=true;
+    clearTimeout(timer);
+    if(worker)await worker.terminate().catch(console.warn);
   }
-  if(run.lastFix!==null){
-    if(q.time<=run.lastFix)return;
-    if(q.time-run.lastFix>MAX_GAP)interrupt();
-  }
-  run.lastFix=q.time;
-  const previous=run.anchor;
-  if(!previous){
-    if(run.start===null)run.start=q.time;
-    run.anchor=q;run.track.push([q.latitude,q.longitude]);
-    status(run.interrupted?"GPS resumed. Recorded distance may be short.":"GPS tracking.");
-    ui();return;
-  }
-  const step=dist(previous,q),seconds=(q.time-previous.time)/1000;
-  if(step<3||step/seconds>8)return;
-  const previousMeters=run.meters;
-  run.meters+=step;run.anchor=q;run.track.push([q.latitude,q.longitude]);
-  const crossingTime=target=>(previous.time+(q.time-previous.time)*(target-previousMeters)/step-run.start)/1000;
-  const crossed=target=>target>previousMeters&&target<=run.meters;
-  const half=crossed(MILE/2),turn=run.turn>0&&crossed(run.turn*MILE);
-  const words=[];
-  if(half){words.push("half");lastSplit="Half mile · "+fmt(crossingTime(MILE/2))}
-  const mile=run.splits.length+1;
-  if(crossed(mile*MILE)){
-    const total=crossingTime(mile*MILE),split=total-(run.splits.at(-1)?.totalSeconds||0);
-    run.splits.push({mile,seconds:split,totalSeconds:total,estimated:run.interrupted});
-    lastSplit="Mile "+mile+" · "+fmt(split)+"/mi · "+fmt(total)+" total · "+fmt(total/mile)+"/mi average";
-    words.push("mile",...spokenNumber(mile));
-    words.push("split",...spokenTime(split),"per","total",...spokenTime(total),"average",...spokenTime(total/mile),"per");
-  }
-  if(turn){words.unshift("turn");if(!half&&words.length===1)lastSplit="Turnaround reached."}
-  if(words.length)speak(words);
-  ui();
-}
-function begin(){
-  if(busy())return;
-  if(nativeBridge){nativeCommand("start");return}
-  if(!navigator.geolocation){status("GPS unavailable on this device.");return}
-  const turn=$("gpsTurn").valueAsNumber;
-  const session={active:true,start:null,seconds:0,meters:0,anchor:null,lastFix:null,splits:[],track:[],turn,interrupted:false,visibleSince:0};
-  run=session;
-  lastSplit="";$("gpsHistory").open=false;
-  status("Getting GPS. Wait for “GPS tracking” before moving.");
-  prepareVoice();keepAwake(run);
-  watch=navigator.geolocation.watchPosition(position=>{if(run===session)got(position)},error=>{
-    if(run!==session||!session.active)return;
-    if(error.code===1){
-      stopTracking();status("Location access denied. Allow location access and try again.");ui();
-    }else status("Waiting for a usable GPS signal.");
-  },{enableHighAccuracy:true,maximumAge:0,timeout:20000});
-  tick=setInterval(()=>{
-    if(run.lastFix!==null&&Date.now()-run.lastFix>MAX_GAP){
-      interrupt();status("GPS signal lost. Distance may be short.");
-    }
-    ui();
-  },1000);
-  ui();
-}
-function stopTracking(){
-  run.seconds=elapsed();run.active=false;
-  if(watch!==null)navigator.geolocation.clearWatch(watch);
-  watch=null;clearInterval(tick);tick=null;
-  wakeLock?.release().catch(()=>{});wakeLock=null;
-  stopCue();
-  if(audio){
-    audio.suspend().catch(()=>{});audioType("auto");
-  }
-  $("gpsHint").textContent="Keep this screen open and awake for GPS.";
-}
-function finish(){
-  if(nativeBridge){nativeCommand("finish");return}
-  if(run?.active){
-    stopTracking();
-    const mi=run.meters/MILE;
-    if(!(mi>0)){
-      status("No distance recorded. Run was not saved.");ui();return;
-    }
-    const date=new Date();
-    pending={date,record:{distance:mi,time:fmt(run.seconds),timeSeconds:run.seconds,
-      pace:run.seconds>0?fmt(run.seconds/mi)+"/mi":"—",
-      mileSplits:run.splits,notes:"",completedAt:date.toISOString(),source:"GPS",
-      gpsInterrupted:run.interrupted,track:run.track.map(([lat,lon])=>[+lat.toFixed(6),+lon.toFixed(6)])}};
-  }
-  if(!pending)return;
-  const {record,date}=pending;
-  record.notes=$("gpsNotes").value.trim();
-  try{MC2.saveRun(record,date)}catch(error){
-    console.error(error);status("Save failed. Tap Finish & Save to retry.");ui();return;
-  }
-  pending=null;
-  savedUI(record);
-}
-function savedUI(record){
-  $("gpsNotes").value="";
-  const message="Run saved: "+record.distance.toFixed(2)+" mi in "+record.time+(record.gpsInterrupted?". GPS interrupted.":".");
-  status(message);ui();refreshHistory();
-  MC2.refreshRunStats();
-  try{window.MarineJourney?.render(true);if(typeof update==="function")update()}catch(error){console.error(error)}
-}
-let history=[];
-function refreshHistory(){
-  history=MC2.recentRuns();
-  $("gpsHistory").hidden=!history.length;
-  $("gpsSavedRun").replaceChildren(...history.map(({key,run},i)=>{
-    const time=run.completedAt?new Date(run.completedAt).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}):run.time||"";
-    return new Option(key+" · "+Number(run.distance).toFixed(2)+" mi"+(time?" · "+time:""),i);
-  }));
-  showSavedNotes();
-}
-function showSavedNotes(){
-  const item=history[$("gpsSavedRun").value];
-  $("gpsSavedNotes").value=item?.run.notes||"";
-  $("gpsNotesStatus").textContent=item?.run.gpsInterrupted?"GPS was interrupted during this run.":"";
 }
 function mount(){
   const root=$("mc2C");
-  if(!root||$("gpsPanel"))return;
-  root.insertAdjacentHTML("beforeend",`<div id="gpsPanel">
-    <div class="gpsGrid">
-      <div>Distance<div class="gpsMetric" id="gpsDistance">0.00 mi</div></div>
-      <div>Time<div class="gpsMetric" id="gpsTime">0:00</div></div>
-      <div>Average pace<div class="gpsMetric" id="gpsPace">—</div></div>
-      <div><label for="gpsTurn">Turnaround (mi)</label><input type="number" id="gpsTurn" min="0" step="any" inputmode="decimal" value="1"></div>
-    </div>
-    <label class="gpsVoice"><input type="checkbox" id="gpsVoice" checked><span id="gpsVoiceLabel">Spoken splits</span></label>
-    <label for="gpsNotes"><strong>Run notes</strong></label>
-    <textarea id="gpsNotes" rows="2" maxlength="2000" placeholder="Unbroken distance, stops, how you felt…"></textarea>
-    <div class="gpsGrid"><button id="gpsStart" type="button">Start GPS Run</button><button id="gpsFinish" type="button" disabled>Finish &amp; Save</button></div>
-    <p class="gpsStatus" id="gpsHint">Keep this screen open and awake for GPS.</p>
-    <p class="gpsStatus" id="gpsStatus" role="status"></p>
-    <p class="gpsStatus" id="gpsSplit" aria-live="polite"></p>
-    <details id="gpsHistory" hidden><summary>Saved runs &amp; notes</summary>
-      <label for="gpsSavedRun">Run</label><select id="gpsSavedRun"></select>
-      <label for="gpsSavedNotes">Run notes</label><textarea id="gpsSavedNotes" rows="3" maxlength="2000"></textarea>
-      <button id="gpsSaveNotes" type="button">Save Notes</button><p id="gpsNotesStatus" class="gpsStatus" role="status"></p>
+  root.innerHTML=`<div id="runImport">
+    <label for="runScreenshot"><strong>MapMyRun screenshot</strong></label>
+    <input id="runScreenshot" type="file" accept="image/*" aria-describedby="runReadStatus">
+    <p id="runReadStatus" class="small runStatus" role="status"></p>
+    <form id="runImportForm" hidden>
+      <div class="runFields">
+        <label>Miles<input id="runMiles" type="number" min="0.001" step="any" inputmode="decimal" required></label>
+        <label>Time (mm:ss or h:mm:ss)<input id="runTime" type="text" placeholder="24:30" maxlength="11" required></label>
+      </div>
+      <label>Run date<input id="runDate" type="date" required></label>
+      <p id="runPace" class="small runStatus"></p>
+      <label>Run notes<textarea id="runNotes" rows="2" maxlength="2000"></textarea></label>
+      <button id="runSave" class="yellow" type="submit">Save Run</button>
+    </form>
+    <details id="runHistory" hidden><summary>Saved runs &amp; notes</summary>
+      <label>Run<select id="runSaved"></select></label>
+      <label>Run notes<textarea id="runSavedNotes" rows="3" maxlength="2000"></textarea></label>
+      <button id="runSaveNotes" type="button">Save Notes</button>
+      <p id="runNotesStatus" class="small runStatus" role="status"></p>
     </details>
-  </div>`);
-  $("gpsStart").onclick=begin;$("gpsFinish").onclick=finish;
-  $("gpsVoice").onchange=()=>{
-    if(nativeBridge){
-      if(nativeRunning())nativeBridge.postMessage({action:"voice",enabled:$("gpsVoice").checked}).catch(error=>console.warn(error));
-    }else if($("gpsVoice").checked&&run?.active)prepareVoice();
-    else stopCue();
+  </div>`;
+  const panel=$("runImport"),fileInput=$("runScreenshot"),form=$("runImportForm");
+  const miles=$("runMiles"),time=$("runTime"),date=$("runDate"),status=$("runReadStatus");
+  let selectedFile=null,scanID=0,fingerprint="",history=[];
+  date.max=localDate();
+  const pace=()=>{
+    const elapsed=seconds(time.value),distance=miles.valueAsNumber;
+    return elapsed&&distance>0?duration(elapsed/distance)+"/mi":"";
   };
-  if(nativeBridge){
-    $("gpsHint").textContent="Wait for GPS tracking before locking your iPhone.";
-    if(nativeState?.id){
-      $("gpsNotes").value=readDraft(nativeState.id);
-      $("gpsTurn").value=nativeState.turn;
-      $("gpsVoice").checked=nativeState.voice;
+  const displayPace=()=>{
+    const average=pace();
+    $("runPace").textContent=average?"Average pace "+average:"";
+  };
+  const showNotes=()=>{
+    const saved=history[$("runSaved").selectedIndex];
+    $("runSavedNotes").value=saved?.run.notes||"";
+    $("runNotesStatus").textContent=saved?.run.gpsInterrupted?"GPS was interrupted during this run.":"";
+  };
+  const refreshHistory=()=>{
+    history=MC2.recentRuns();
+    $("runHistory").hidden=!history.length;
+    $("runSaved").replaceChildren(...history.map(({key,run},i)=>new Option(key+" · "+Number(run.distance).toFixed(2)+" mi"+(run.time?" · "+run.time:""),i)));
+    showNotes();
+  };
+  fileInput.onchange=async()=>{
+    const file=fileInput.files[0];
+    if(!file)return;
+    const id=++scanID;
+    selectedFile=file;
+    fingerprint="";
+    form.hidden=true;
+    date.value=localDate();
+    miles.value=time.value="";
+    displayPace();
+    status.textContent="Reading screenshot…";
+    const current=()=>panel.isConnected&&id===scanID;
+    if(file.size>20*1024*1024||file.type&&!file.type.startsWith("image/")){
+      status.textContent="Choose a screenshot image under 20 MB.";
+      return;
     }
-    $("gpsNotes").oninput=()=>{if(nativeState?.id)writeDraft(nativeState.id,$("gpsNotes").value)};
-  }
-  $("gpsSavedRun").onchange=showSavedNotes;
-  $("gpsSaveNotes").onclick=()=>{
-    const selected=history[$("gpsSavedRun").value];
-    if(!selected)return;
-    const notes=$("gpsSavedNotes").value.trim();
-    try{MC2.saveRunNotes(selected,notes);selected.run={...selected.run,notes};$("gpsNotesStatus").textContent="Notes saved."}
-    catch(error){console.error(error);$("gpsNotesStatus").textContent="Notes could not be saved. Reopen the run log and try again."}
+    try{
+      if(window.crypto?.subtle){
+        const digest=await window.crypto.subtle.digest("SHA-256",await file.arrayBuffer());
+        if(!current())return;
+        fingerprint=Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,"0")).join("");
+      }
+      const stats=await scan(file);
+      if(!current())return;
+      miles.value=stats.distance;
+      time.value=stats.time;
+      if(stats.date)date.value=stats.date;
+      status.textContent=stats.distance&&stats.time?"Check the numbers and run date before saving.":"Fill in any stats the screenshot reader missed.";
+    }catch(error){
+      if(!current())return;
+      console.warn("Screenshot reading failed",error);
+      status.textContent="Couldn’t read this screenshot. Enter the numbers below or choose another screenshot.";
+    }
+    form.hidden=false;
+    displayPace();
   };
-  refreshHistory();ui();status(nativeState?.status||lastStatus);
+  miles.oninput=time.oninput=displayPace;
+  form.onsubmit=event=>{
+    event.preventDefault();
+    if(!selectedFile||form.hidden)return;
+    const day=runDate(date.value),distance=miles.valueAsNumber,elapsed=seconds(time.value);
+    if(!day||!Number.isFinite(distance)||distance<=0||!elapsed){
+      status.textContent="Enter miles, a valid time (mm:ss or h:mm:ss), and the run date.";
+      return;
+    }
+    const notes=$("runNotes").value.trim();
+    const record={distance,time:duration(elapsed),timeSeconds:elapsed,pace:pace(),notes,
+      completedAt:day.toISOString(),source:"MapMyRun screenshot",screenshotHash:fingerprint};
+    let saved;
+    try{saved=MC2.saveRun(record,day)}
+    catch(error){console.error(error);status.textContent="Save failed. Your entries are still here. Try Save Run again.";return}
+    if(!saved){status.textContent="This screenshot was already logged.";return}
+    selectedFile=null;
+    fileInput.value="";
+    form.reset();
+    form.hidden=true;
+    status.textContent="Run saved: "+distance.toFixed(2)+" mi in "+record.time+".";
+    refreshHistory();
+    MC2.refreshRunStats();
+    try{window.MarineJourney?.render(true);if(typeof update==="function")update()}catch(error){console.error(error)}
+  };
+  $("runSaved").onchange=showNotes;
+  $("runSaveNotes").onclick=()=>{
+    const selected=history[$("runSaved").selectedIndex];
+    if(!selected)return;
+    const notes=$("runSavedNotes").value.trim();
+    try{MC2.saveRunNotes(selected,notes);selected.run={...selected.run,notes};$("runNotesStatus").textContent="Notes saved."}
+    catch(error){console.error(error);$("runNotesStatus").textContent="Notes could not be saved. Reopen the run log and try again."}
+  };
+  refreshHistory();
 }
-window.MarineGPS={mount,busy};
-if(nativeBridge){
-  document.addEventListener("DOMContentLoaded",pollNative);
-  window.addEventListener("pageshow",pollNative);
-  setInterval(pollNative,1000);
-}
+window.MarineRunImport={mount};
 })();
 </script>
 
