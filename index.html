@@ -2873,9 +2873,10 @@ ${x.notes||"None"}
 
 COACHING REQUEST
 Give me a quick read on today, what I should fix tomorrow, and whether I am staying on mission.`;
+    const report=window.MC2?.appendWorkoutCheckIn(text)||text;
     const sb=document.getElementById("summaryBox");
-    if(sb)sb.value=text;
-    return text;
+    if(sb)sb.value=report;
+    return report;
   };
   function refreshProgress(){
     const total=workoutDaysTotal(), week=gymThisWeek(), st=streak(), threat=dadBodThreat(total);
@@ -2930,15 +2931,19 @@ Give me a quick read on today, what I should fix tomorrow, and whether I am stay
     saveDay(x);
     toast("Mission Status Saved","Daily checklist updated.");
   };
-  window.copySummary=function(){
-    const text=generateSummary();
-    if(navigator.clipboard&&navigator.clipboard.writeText){
-      navigator.clipboard.writeText(text).then(()=>toast("Copied","Coach check-in copied. Paste it to me."));
-    }else{
-      const box=document.getElementById("summaryBox");
-      if(box){box.select();document.execCommand("copy");}
-      toast("Copied","Coach check-in copied. Paste it to me.");
+  window.copySummary=async function(){
+    const text=generateSummary(),box=document.getElementById("summaryBox");
+    try{
+      if(!navigator.clipboard?.writeText)throw new Error("Clipboard API unavailable");
+      await navigator.clipboard.writeText(text);
+    }catch(error){
+      if(box){box.value=text;box.select();}
+      if(!box||!document.execCommand("copy")){
+        toast("Copy unavailable","Select and copy the check-in text.");
+        return;
+      }
     }
+    toast("Copied","Coach check-in copied. Paste it to me.");
   };
   window.clearTodayData=function(){
     const d=allData();
@@ -6309,32 +6314,8 @@ document.addEventListener("DOMContentLoaded", function(){
     updateMassageStatus();
   }
 
-  function patchClipboard(){
-    if(!navigator.clipboard || !navigator.clipboard.writeText) return;
-    if(navigator.clipboard.writeText.__v115Patched) return;
-
-    const oldWrite = navigator.clipboard.writeText.bind(navigator.clipboard);
-
-    const patched = function(text){
-      const s = String(text || "");
-
-      if(
-        s.includes("MARINE COMEBACK CHECK-IN") ||
-        s.includes("COACHING REQUEST")
-      ){
-        return oldWrite(injectMoodLog(s));
-      }
-
-      return oldWrite(text);
-    };
-
-    patched.__v115Patched = true;
-    navigator.clipboard.writeText = patched;
-  }
-
   document.addEventListener("DOMContentLoaded", function(){
     wireMoodButtons();
-    patchClipboard();
 
     setTimeout(wireMoodButtons, 500);
     setTimeout(wireMoodButtons, 1500);
@@ -7575,7 +7556,6 @@ function runStats(now=new Date()){
   }
   return{week,month,total,best};
 }
-function miles(){return runStats().week}
 function wm(){
   const r=runStats();
   for(const [id,value] of Object.entries({mc2Miles:r.week.toFixed(2)+" mi",mc2MonthMiles:r.month.toFixed(2)+" mi",mc2TotalMiles:r.total.toFixed(2)+" mi",mc2BestMile:r.best===null?"—":ft(r.best)})){
@@ -7647,11 +7627,41 @@ function done(){
   try{if(typeof update==="function")update()}catch(error){console.error(error)}
   close();note("Workout Logged",p.n+" saved.");
 }
-function exportText(){let e=D()[dk()]||{},x="";if(e.runSession){let r=e.runSession;x+="\n\nRUN\nDistance: "+(+r.distance).toFixed(2)+" mi\nTime: "+r.time+"\nAverage Pace: "+r.pace+"\nNotes: "+(r.notes||"None")+"\nWeekly Running Miles: "+miles().toFixed(2)+" mi"+"\nBest Mile This Week: "+(runStats().best===null?"Not recorded":ft(runStats().best))+"\nMonthly Running Miles: "+runStats().month.toFixed(2)+" mi"+"\nTotal Running Miles: "+runStats().total.toFixed(2)+" mi"}if(e.gymSession){let g=e.gymSession;x+="\n\nGYM DAY — WORKOUT "+g.workout+"\nWarm-up (5 min, speed 2.5, incline 15): "+(g.warmup?"YES":"NO")+"\nCooldown / Stretch: "+(g.cooldown?"YES":"NO")+"\nRed-light therapy: "+(g.redLight?"YES":"NO")+"\nMassage chair: "+(g.massageChair?"YES":"NO");g.exercises.forEach(v=>x+="\n"+v.name+": "+v.sets.map(s=>s.weight+"×"+s.reps).join(" | "))}return x}
-function patch(){if(typeof window.generateSummary!=="function"||window.generateSummary.__mc2)return;let old=window.generateSummary;window.generateSummary=function(){let z=old.apply(this,arguments),b=document.getElementById("summaryBox");if(b){let base=String(b.value||z||"").replace(/\n\nRUN\n[\s\S]*?(?=\n\nGYM DAY — WORKOUT|$)/,"").replace(/\n\nGYM DAY — WORKOUT [AB]\n[\s\S]*$/,"");b.value=base.trim()+exportText();return b.value}return z};window.generateSummary.__mc2=true}
-document.addEventListener("DOMContentLoaded",()=>{wm();setTimeout(patch,200);setTimeout(patch,1500);o().addEventListener("click",e=>{if(e.target===o())close()})});
+function appendWorkoutCheckIn(text){
+  const day=D()[dk()]||{},runs=sessions(day),sections=[];
+  runs.forEach((run,index)=>{
+    const notes=String(run.notes||"").trim().replace(/\r\n?/g,"\n").replace(/\n/g,"\n  ")||"None";
+    sections.push([
+      runs.length>1?"RUN "+(index+1):"RUN",
+      "Distance: "+Number(run.distance).toFixed(2)+" mi",
+      "Time: "+run.time,
+      "Average Pace: "+run.pace,
+      "Notes: "+notes
+    ].join("\n"));
+  });
+  if(runs.length){
+    const {week,month,total,best}=runStats();
+    sections[sections.length-1]+="\nWeekly Running Miles: "+week.toFixed(2)+" mi"+
+      "\nBest Mile This Week: "+(best===null?"Not recorded":ft(best))+
+      "\nMonthly Running Miles: "+month.toFixed(2)+" mi"+
+      "\nTotal Running Miles: "+total.toFixed(2)+" mi";
+  }
+  if(day.gymSession){
+    const gym=day.gymSession,yes=value=>value?"YES":"NO";
+    sections.push([
+      "GYM DAY — WORKOUT "+gym.workout,
+      "Warm-up (5 min, speed 2.5, incline 15): "+yes(gym.warmup),
+      "Cooldown / Stretch: "+yes(gym.cooldown),
+      "Red-light therapy: "+yes(gym.redLight),
+      "Massage chair: "+yes(gym.massageChair),
+      ...gym.exercises.map(exercise=>exercise.name+": "+exercise.sets.map(set=>set.weight+"×"+set.reps).join(" | "))
+    ].join("\n"));
+  }
+  return sections.length?[text,...sections].join("\n\n"):text;
+}
+document.addEventListener("DOMContentLoaded",()=>{wm();o().addEventListener("click",e=>{if(e.target===o())close()})});
 window.addEventListener("pageshow",wm);window.addEventListener("focus",wm);window.addEventListener("storage",wm);document.addEventListener("visibilitychange",()=>{if(!document.hidden)wm()});
-return{home,run,saveRun,saveRunNotes,recentRuns,gym,work,done,close,refreshRunStats:wm,runStats,recordRun};
+return{home,run,saveRun,saveRunNotes,recentRuns,gym,work,done,close,refreshRunStats:wm,runStats,recordRun,appendWorkoutCheckIn};
 })();
 </script>
 <style>
@@ -7688,15 +7698,23 @@ function duration(value){
   const hours=Math.floor(total/3600),minutes=Math.floor(total%3600/60);
   return (hours?hours+":"+String(minutes).padStart(2,"0"):minutes)+":"+String(total%60).padStart(2,"0");
 }
-function dateFromText(text){
+function dateFromText(text,now=new Date()){
   const months="jan feb mar apr may jun jul aug sep oct nov dec".split(" ");
-  const named=text.match(/\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+(\d{1,2}),?\s+(20\d{2})\b/i);
+  const named=text.match(/\b(?:(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s+)?(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+(\d{1,2})(?:,?\s+(20\d{2})\b)?(?=\s|,|$)/i);
   const iso=text.match(/\b20\d{2}-\d{2}-\d{2}\b/);
   const numeric=text.match(/\b(0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01])\/(20\d{2}|\d{2})\b/);
   const pad=value=>String(value).padStart(2,"0");
-  const key=named?[named[3],pad(months.indexOf(named[1].slice(0,3).toLowerCase())+1),pad(named[2])].join("-"):
-    iso?.[0]||(numeric?[numeric[3].length===2?"20"+numeric[3]:numeric[3],pad(numeric[1]),pad(numeric[2])].join("-"):"");
-  return runDate(key)?key:"";
+  const namedKey=year=>[year,pad(months.indexOf(named[2].slice(0,3).toLowerCase())+1),pad(named[3])].join("-");
+  const full=named?.[4]?namedKey(named[4]):iso?.[0]||
+    (numeric?[numeric[3].length===2?"20"+numeric[3]:numeric[3],pad(numeric[1]),pad(numeric[2])].join("-"):"");
+  if(full)return runDate(full)?full:"";
+  if(!named?.[1])return "";
+  const weekday=["sunday","monday","tuesday","wednesday","thursday","friday","saturday"].indexOf(named[1].toLowerCase());
+  for(const year of [now.getFullYear(),now.getFullYear()-1]){
+    const key=namedKey(year),date=runDate(key);
+    if(date&&key<=localDate(now)&&date.getDay()===weekday)return key;
+  }
+  return "";
 }
 function wordRows(tsv){
   const rows=new Map();
@@ -7747,7 +7765,8 @@ function readStats({text="",tsv=""}){
   const unitLine=clean.match(/^[ \t]*(\d+[.,]?\d*|[.,]\d+)[ \t]*(km|kilomet(?:er|re)s?|mi|miles?)[ \t]*$/im);
   const qualified=numbers.filter(item=>item.unit);
   const nearDistance=closestMetric(distanceLabels,qualified);
-  const inlineDistance=labeledDistance||(!nearDistance&&unitLine);
+  const titleDistance=clean.match(/^[ \t]*(\d+[.,]?\d*|[.,]\d+)[ \t]*(km|mi|miles?)[ \t]+(?:run(?:ning)?|walk)\b/im);
+  const inlineDistance=labeledDistance||(!nearDistance&&(titleDistance||unitLine));
   const bareDistance=closestMetric(distanceLabels,numbers);
   const distance=inlineDistance?
     Number(inlineDistance[1].replace(",","."))*(km.test(inlineDistance[2])?MILES_PER_KM:1):
@@ -7844,8 +7863,7 @@ function mount(){
     selectedFile=file;
     fingerprint="";
     form.hidden=true;
-    date.value=localDate();
-    miles.value=time.value="";
+    date.value=miles.value=time.value="";
     displayPace();
     status.textContent="Reading screenshot…";
     const current=()=>panel.isConnected&&id===scanID;
@@ -7888,7 +7906,7 @@ function mount(){
     let saved;
     try{saved=MC2.saveRun(record,day)}
     catch(error){console.error(error);status.textContent="Save failed. Your entries are still here. Try Save Run again.";return}
-    if(!saved){status.textContent="This screenshot was already logged.";return}
+    if(!saved){status.textContent="This screenshot was already logged. Edit its notes under Saved runs & notes.";return}
     selectedFile=null;
     fileInput.value="";
     form.reset();
@@ -7903,8 +7921,15 @@ function mount(){
     const selected=history[$("runSaved").selectedIndex];
     if(!selected)return;
     const notes=$("runSavedNotes").value.trim();
-    try{MC2.saveRunNotes(selected,notes);selected.run={...selected.run,notes};$("runNotesStatus").textContent="Notes saved."}
-    catch(error){console.error(error);$("runNotesStatus").textContent="Notes could not be saved. Reopen the run log and try again."}
+    try{MC2.saveRunNotes(selected,notes)}
+    catch(error){
+      console.error(error);
+      $("runNotesStatus").textContent="Notes could not be saved. Reopen the run log and try again.";
+      return;
+    }
+    selected.run={...selected.run,notes};
+    $("runNotesStatus").textContent="Notes saved.";
+    try{window.generateSummary?.()}catch(error){console.error(error)}
   };
   refreshHistory();
 }
