@@ -8061,6 +8061,29 @@ window.MarineJourney=(()=>{
 })();
 </script>
 
+<script id="marine-nov16-run-correction">
+/* One-time, narrowly scoped repair of the broken GPS result; no other dates or runs touched. */
+(function(){
+  try{
+    const key="marine_data_v5",raw=localStorage.getItem(key);
+    if(!raw)return;
+    const logs=JSON.parse(raw),day=logs&&logs["2026-11-16"];
+    if(!day)return;
+    const matches=r=>r&&r.source==="GPS"&&Math.abs(Number(r.distance)-0.03)<0.015&&r.time==="23:50";
+    const original=Array.isArray(day.runSessions)&&day.runSessions.length?day.runSessions:day.runSession?[day.runSession]:[];
+    if(!original.some(matches))return;
+    const notes="Ran 2.00 miles total. First 1.25 miles without stopping; only two stops on the remaining 0.75 miles (usually 4–6). No foot or ankle pain; no calf problems.";
+    const repair=r=>matches(r)?{...r,distance:2,time:"23:50",timeSeconds:1430,pace:"11:55/mi",notes,source:"Corrected user-reported run (GPS failed)",mileSplits:[],gpsInterrupted:true}:r;
+    if(Array.isArray(day.runSessions)&&day.runSessions.length)day.runSessions=day.runSessions.map(repair);
+    if(day.runSession)day.runSession=repair(day.runSession);
+    else if(day.runSessions?.length)day.runSession=day.runSessions[day.runSessions.length-1];
+    localStorage.setItem(key,JSON.stringify(logs));
+    window.addEventListener("DOMContentLoaded",()=>{
+      try{window.MC2?.refreshRunStats?.();if(typeof update==="function")update();window.MarineJourney?.render?.(true)}catch(e){console.warn("Run stats refresh:",e)}
+    });
+  }catch(e){console.error("Nov 16 run correction not applied:",e)}
+})();
+</script>
 <script src="./learning-hub.js?v=8" defer></script>
 <script src="./evening.js?v=8" defer></script>
 <script src="./reminders.js" defer></script>
